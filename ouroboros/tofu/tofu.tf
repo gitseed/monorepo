@@ -9,10 +9,14 @@ terraform {
       version = "3.6.0"
     }
     restapi = {
-      source  = "mastercard/restapi"
+      source = "mastercard/restapi"
       # Version 3 was rewritten with AI and it sucks.
       # Both version 2 and 3 are abandonware.
       version = "2.0.1"
+    }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "6.56.0"
     }
   }
   backend "s3" {
@@ -41,14 +45,16 @@ provider "infisical" {
 provider "http" {
 }
 
-# The token is minted by this configuration, so the provider cannot be fully
-# configured until apply. Keep this on the SDKv2 line, as in veronica.
+# The token is minted by this configuration.
 provider "restapi" {
   alias = "infisical_project_memberships"
   uri   = "https://us.infisical.com/api/v1"
-
   headers = {
-    Authorization  = "Bearer ${infisical_identity_token_auth_token.user_lister.token}"
+    Authorization  = "Bearer ${infisical_identity_token_auth_token.human_inviter.token}"
     "Content-Type" = "application/json"
   }
+}
+
+provider "aws" {
+  region = local.workspace.aws_region
 }
