@@ -1,0 +1,1 @@
+This is my side project monorepo. It's intended to bring together global environment setup, permissions boundaries, AI practices and more.
