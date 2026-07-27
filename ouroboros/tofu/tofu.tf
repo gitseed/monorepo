@@ -1,22 +1,26 @@
 terraform {
   required_providers {
-    infisical = {
-      version = "0.19.6"
-      source  = "infisical/infisical"
+    aws = {
+      source  = "hashicorp/aws"
+      version = "6.56.0"
+    }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "5.22.0"
     }
     http = {
       source  = "hashicorp/http"
       version = "3.6.0"
+    }
+    infisical = {
+      version = "0.19.6"
+      source  = "infisical/infisical"
     }
     restapi = {
       source = "mastercard/restapi"
       # Version 3 was rewritten with AI and it sucks.
       # Both version 2 and 3 are abandonware.
       version = "2.0.1"
-    }
-    aws = {
-      source  = "hashicorp/aws"
-      version = "6.56.0"
     }
     time = {
       source  = "hashicorp/time"
@@ -39,6 +43,15 @@ terraform {
   }
 }
 
+
+provider "aws" {
+  region = local.workspace.aws_region
+}
+
+provider "cloudflare" {}
+
+provider "http" {}
+
 provider "infisical" {
   auth = {
     aws_iam = {
@@ -46,10 +59,6 @@ provider "infisical" {
   }
 }
 
-provider "http" {
-}
-
-# The token is minted by this configuration.
 provider "restapi" {
   alias = "infisical_project_memberships"
   uri   = "https://us.infisical.com/api/v1"
@@ -59,6 +68,4 @@ provider "restapi" {
   }
 }
 
-provider "aws" {
-  region = local.workspace.aws_region
-}
+provider "time" {}
