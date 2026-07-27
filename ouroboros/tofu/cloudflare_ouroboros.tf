@@ -8,6 +8,10 @@ resource "infisical_secret" "cloudflare_account" {
   folder_path      = "/"
 }
 
+locals {
+  cf_account_id = nonsensitive(data.infisical_secrets.ouroboros.secrets.CLOUDFLARE_ACCOUNT_ID.value)
+}
+
 data "cloudflare_user" "me" {}
 
 data "cloudflare_api_token_permission_groups_list" "all" {}

@@ -1,0 +1,20 @@
+[profile default]
+sso_session = ouroboros
+sso_account_id = ${aws_account_id}
+sso_role_name = admin
+region = ${aws_region}
+output = json
+
+[sso-session ouroboros]
+sso_start_url = ${sso_start_url}
+sso_region = ${aws_region}
+sso_registration_scopes = sso:account:access
+
+[profile cloudflare]
+aws_access_key_id=${r2_access_key_id}
+aws_secret_access_key=${r2_secret_access_key}
+services = cloudflare
+
+[services cloudflare]
+s3 =
+  endpoint_url = https://${cf_account_id}.r2.cloudflarestorage.com

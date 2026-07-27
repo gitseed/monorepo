@@ -16,6 +16,10 @@ terraform {
       version = "0.19.6"
       source  = "infisical/infisical"
     }
+    local = {
+      source  = "hashicorp/local"
+      version = "2.9.0"
+    }
     restapi = {
       source = "mastercard/restapi"
       # Version 3 was rewritten with AI and it sucks.
@@ -60,6 +64,8 @@ provider "infisical" {
     }
   }
 }
+
+provider "local" {}
 
 provider "restapi" {
   alias = "infisical_project_memberships"
