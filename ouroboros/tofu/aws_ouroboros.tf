@@ -1,4 +1,3 @@
-# The very same AWS identity that we are using tofu with!
 data "aws_ssoadmin_instances" "main" {}
 
 data "aws_caller_identity" "current" {}
@@ -11,6 +10,7 @@ locals {
   aws_account_id    = data.aws_caller_identity.current.account_id
 }
 
+# The very same AWS identity that we are using tofu with!
 resource "aws_identitystore_user" "ouroboros" {
   identity_store_id = local.identity_store_id
   display_name      = local.workspace.human_name
