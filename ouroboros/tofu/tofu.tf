@@ -48,7 +48,9 @@ provider "aws" {
   region = local.workspace.aws_region
 }
 
-provider "cloudflare" {}
+provider "cloudflare" {
+  api_token = data.infisical_secrets.ouroboros.secrets.CLOUDFLARE_API_TOKEN.value
+}
 
 provider "http" {}
 
