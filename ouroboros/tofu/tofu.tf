@@ -18,6 +18,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "6.56.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "0.14.0"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"

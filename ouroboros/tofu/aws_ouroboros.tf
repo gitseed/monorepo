@@ -3,9 +3,12 @@ data "aws_ssoadmin_instances" "main" {}
 
 data "aws_caller_identity" "current" {}
 
+data "aws_region" "current" {}
+
 locals {
   identity_store_id = tolist(data.aws_ssoadmin_instances.main.identity_store_ids)[0]
   sso_instance_id   = tolist(data.aws_ssoadmin_instances.main.arns)[0]
+  aws_account_id = data.aws_caller_identity.current.account_id
 }
 
 resource "aws_identitystore_user" "ouroboros" {
@@ -56,3 +59,19 @@ resource "aws_ssoadmin_managed_policy_attachment" "admin" {
   managed_policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
   permission_set_arn = aws_ssoadmin_permission_set.admin.arn
 }
+
+resource "time_sleep" "waitfor_accountrole" {
+  depends_on = [aws_ssoadmin_account_assignment.admin]
+  create_duration = "10s"
+}
+
+data "aws_iam_roles" "admin" {
+  path_prefix = "/aws-reserved/sso.amazonaws.com/${data.aws_region.current.region}/"
+  name_regex  = "AWSReservedSSO_admin_.*"
+  depends_on = [time_sleep.waitfor_accountrole]
+}
+
+data "aws_iam_role" "admin" {
+  name = one(data.aws_iam_roles.admin.names)
+}
+

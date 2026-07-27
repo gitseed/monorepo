@@ -8,10 +8,10 @@ resource "infisical_identity" "ouroboros" {
 resource "infisical_identity_aws_auth" "ouroboros" {
   identity_id                 = infisical_identity.ouroboros.id
   sts_endpoint                = "https://sts.amazonaws.com/"
-  allowed_account_ids         = ["593941967609"]                                                                 # TODO
-  allowed_principal_arns      = ["arn:aws:sts::593941967609:assumed-role/AWSReservedSSO_admin_5784f67a3f101be8"] # TODO
-  access_token_ttl            = 86400
-  access_token_max_ttl        = 86400
+  allowed_account_ids         = [local.aws_account_id]                                                                 # TODO
+  allowed_principal_arns      = ["arn:aws:sts::${local.aws_account_id}:assumed-role/${data.aws_iam_role.admin.name}"]
+  access_token_ttl            = 86400 # 1 day
+  access_token_max_ttl        = 86400 # 1 day
   access_token_num_uses_limit = 0
   access_token_trusted_ips = [
     {
