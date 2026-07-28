@@ -67,7 +67,7 @@ if ! container system status >/dev/null 2>&1; then
 fi
 
 build_image() {
-  local target="$1"
+  local containerfile="$1"
   local tag="$2"
   local -a cache_args=()
 
@@ -78,17 +78,16 @@ build_image() {
   container build \
     --pull \
     "${cache_args[@]}" \
-    --target "$target" \
     --tag "$tag" \
     --dns "$dns_server" \
-    --file "$project_dir/Containerfile" \
+    --file "$project_dir/$containerfile" \
     "$project_dir"
 }
 
 printf 'Building Agent Vault image...\n'
-build_image vault "$vault_image"
+build_image Containerfile.vault "$vault_image"
 printf 'Building Oh My Pi image...\n'
-build_image agent "$agent_image"
+build_image Containerfile.agent "$agent_image"
 
 choose_ports() {
   local attempt

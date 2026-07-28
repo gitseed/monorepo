@@ -47,6 +47,9 @@ OMP_MODEL=openrouter/anthropic/claude-sonnet-4.5 \
 `services.yaml` is baked into the Agent Vault image. Add another proxied
 service there and launch the script again to rebuild and apply it.
 
+`Containerfile.vault` and `Containerfile.agent` build the vault and agent
+images independently.
+
 The Agent Vault database, cached secrets, generated CA, owner account, and
 agent token live only for the lifetime of that invocation. Oh My Pi's own
 session data is also ephemeral; changes inside `/workspace` persist because
