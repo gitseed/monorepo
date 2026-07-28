@@ -1,0 +1,7 @@
+vault: agent-sandbox
+services:
+  - name: openrouter
+    host: openrouter.ai/api/*
+    auth:
+      type: bearer
+      token: OPENROUTER_API_KEY
