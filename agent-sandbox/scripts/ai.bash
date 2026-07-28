@@ -85,9 +85,9 @@ build_image() {
 }
 
 printf 'Building Agent Vault image...\n'
-build_image Containerfile.vault "$vault_image"
+build_image vault.containerfile "$vault_image"
 printf 'Building Oh My Pi image...\n'
-build_image Containerfile.agent "$agent_image"
+build_image agent.containerfile "$agent_image"
 
 choose_ports() {
   local attempt
