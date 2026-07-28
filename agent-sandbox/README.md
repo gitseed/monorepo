@@ -8,14 +8,18 @@ with `OPENROUTER_API_KEY` only for requests to `openrouter.ai/api/*`.
 Ordinary internet access is unchanged. Closing the terminal or tmux pane stops
 and removes both containers.
 
-## One-time setup
+At startup, the trusted host authenticates to Infisical with the existing AWS
+IAM machine identity and runs `infisical export` for `agent-secrets`. The
+result is piped into Agent Vault's built-in store without creating a secrets
+file. This is a startup snapshot: secret changes take effect the next time the
+sandbox starts.
 
-Create the read-only Infisical identity and its Universal Auth client secret:
+## Prerequisites
 
-```bash
-cd agent-secrets/tofu
-TF_WORKSPACE=global tofu apply
-```
+The host needs the Infisical CLI, working AWS credentials, and
+`INFISICAL_MACHINE_IDENTITY_ID`. The checked-in
+`agent-secrets/.infisical.json` binds exports to the `agent` project and its
+`global` environment.
 
 This uses the existing Apple container DNS setup from the Lightning agent. If
 that host mapping has not already been created:

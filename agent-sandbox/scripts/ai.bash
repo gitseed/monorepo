@@ -10,41 +10,57 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
-for command_name in container curl git nc openssl tofu; do
+for command_name in container curl git infisical jq nc openssl; do
   require_command "$command_name"
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd -- "$script_dir/.." && pwd)"
 repo_root="$(git -C "$project_dir" rev-parse --show-toplevel)"
-secrets_tofu_dir="$repo_root/agent-secrets/tofu"
+agent_secrets_dir="$repo_root/agent-secrets"
+infisical_config="$agent_secrets_dir/.infisical.json"
 
 dns_server="${AGENT_SANDBOX_DNS:-203.0.113.113}"
 vault_name="agent-sandbox"
 vault_image="agent-sandbox-vault:0.39.0"
 agent_image="agent-sandbox-agent:17.1.6"
-
-tofu_output() {
-  local output_name="$1"
-  (
-    cd "$secrets_tofu_dir"
-    TF_WORKSPACE=global tofu output -raw "$output_name"
-  )
-}
-
-if ! infisical_project_id="$(tofu_output agent_vault_project_id)"; then
-  die "agent-secrets is not ready; run TF_WORKSPACE=global tofu apply in $secrets_tofu_dir"
-fi
-if ! infisical_client_id="$(tofu_output agent_vault_client_id)"; then
-  die "agent-secrets is not ready; run TF_WORKSPACE=global tofu apply in $secrets_tofu_dir"
-fi
-if ! infisical_client_secret="$(tofu_output agent_vault_client_secret)"; then
-  die "agent-secrets is not ready; run TF_WORKSPACE=global tofu apply in $secrets_tofu_dir"
+[[ -n "${INFISICAL_MACHINE_IDENTITY_ID:-}" ]] \
+  || die "INFISICAL_MACHINE_IDENTITY_ID is required for Infisical AWS IAM login"
+if ! infisical_project_id="$(
+  jq -er \
+    '.workspaceId | select(type == "string" and length > 0)' \
+    "$infisical_config"
+)"; then
+  die "workspaceId is missing from $infisical_config"
 fi
 
-[[ -n "$infisical_project_id" ]] || die "agent_vault_project_id is empty"
-[[ -n "$infisical_client_id" ]] || die "agent_vault_client_id is empty"
-[[ -n "$infisical_client_secret" ]] || die "agent_vault_client_secret is empty"
+printf 'Exporting agent secrets from Infisical...\n'
+if ! infisical_access_token="$(
+  cd "$project_dir"
+  infisical login \
+    --domain https://app.infisical.com \
+    --method aws-iam \
+    --plain \
+    --silent
+)"; then
+  die "Infisical AWS IAM login failed"
+fi
+[[ -n "$infisical_access_token" ]] || die "Infisical returned an empty access token"
+
+if ! agent_secrets_json="$(
+  cd "$agent_secrets_dir"
+  INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN="$infisical_access_token" \
+    infisical export \
+      --domain https://app.infisical.com \
+      --format json \
+      --projectId "$infisical_project_id" \
+      --silent
+)"; then
+  unset infisical_access_token
+  die "could not export agent-secrets from Infisical"
+fi
+unset infisical_access_token infisical_project_id
+[[ -n "$agent_secrets_json" ]] || die "Infisical exported no agent secrets"
 
 if ! container system status >/dev/null 2>&1; then
   container system start
@@ -118,11 +134,6 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-export INFISICAL_URL="https://app.infisical.com"
-export INFISICAL_UNIVERSAL_AUTH_CLIENT_ID="$infisical_client_id"
-export INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET="$infisical_client_secret"
-unset infisical_client_id infisical_client_secret
-
 printf 'Starting ephemeral Agent Vault...\n'
 container run \
   --detach \
@@ -135,9 +146,6 @@ container run \
   --publish "127.0.0.1:$proxy_port:$proxy_port" \
   --tmpfs /data \
   --tmpfs /tmp \
-  --env INFISICAL_URL \
-  --env INFISICAL_UNIVERSAL_AUTH_CLIENT_ID \
-  --env INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET \
   --env AGENT_VAULT_TELEMETRY=false \
   "$vault_image" \
   server \
@@ -146,10 +154,6 @@ container run \
   --mitm-port "$proxy_port" \
   >/dev/null
 vault_started=1
-
-unset INFISICAL_URL
-unset INFISICAL_UNIVERSAL_AUTH_CLIENT_ID
-unset INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET
 
 vault_ready=0
 for ((attempt = 0; attempt < 100; attempt++)); do
@@ -177,13 +181,13 @@ unset bootstrap_password
 
 container exec "$vault_container" \
   agent-vault vault create "$vault_name" \
-  --credential-store infisical \
-  --infisical-project-id "$infisical_project_id" \
-  --infisical-environment global \
-  --infisical-path / \
-  --poll-interval-seconds 60 \
   >/dev/null
-unset infisical_project_id
+
+printf '%s' "$agent_secrets_json" \
+  | container exec --interactive "$vault_container" \
+      import-agent-secrets "$vault_name" \
+      >/dev/null
+unset agent_secrets_json
 
 container exec "$vault_container" \
   agent-vault vault service set \

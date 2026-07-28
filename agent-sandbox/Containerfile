@@ -6,7 +6,7 @@ FROM ${AGENT_VAULT_IMAGE} AS agent-vault-upstream
 # cached secret disappears with the container.
 FROM alpine:3.24.1 AS vault
 
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates curl jq \
     && addgroup -S agentvault \
     && adduser -S -G agentvault -u 65532 agentvault \
     && mkdir -p /data/.agent-vault \
@@ -14,6 +14,9 @@ RUN apk add --no-cache ca-certificates \
 
 COPY --from=agent-vault-upstream /usr/local/bin/agent-vault /usr/local/bin/agent-vault
 COPY services.yaml /etc/agent-vault/services.yaml
+COPY scripts/import-secrets.sh /usr/local/bin/import-agent-secrets
+
+RUN chmod +x /usr/local/bin/import-agent-secrets
 
 ENV HOME=/data
 EXPOSE 14321 14322
