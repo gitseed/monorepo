@@ -1,34 +1,18 @@
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "6.56.0"
-    }
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "5.22.0"
-    }
-    http = {
-      source  = "hashicorp/http"
-      version = "3.6.0"
-    }
     infisical = {
       version = "0.19.6"
       source  = "infisical/infisical"
     }
-    local = {
-      source  = "hashicorp/local"
-      version = "2.9.0"
-    }
-    time = {
-      source  = "hashicorp/time"
-      version = "0.14.0"
+    openrouter = {
+      source  = "cloudopsworks/openrouter"
+      version = "0.2.18"
     }
   }
   backend "s3" {
     profile                     = "cloudflare"
     bucket                      = "tofu-sensitive"
-    workspace_key_prefix        = "ouroboros"
+    workspace_key_prefix        = "agent-secrets"
     key                         = basename(abspath(path.module))
     use_lockfile                = true
     region                      = "auto"
@@ -41,16 +25,15 @@ terraform {
   }
 }
 
-
-provider "aws" {
-  region = local.workspace.aws_region
+data "infisical_projects" "ouroboros" {
+  slug = "ouroboros"
 }
 
-provider "cloudflare" {
-  api_token = data.infisical_secrets.ouroboros.secrets.CLOUDFLARE_API_TOKEN.value
+data "infisical_secrets" "ouroboros" {
+  env_slug     = tofu.workspace
+  workspace_id = data.infisical_projects.ouroboros.id
+  folder_path  = "/"
 }
-
-provider "http" {}
 
 provider "infisical" {
   auth = {
@@ -59,6 +42,6 @@ provider "infisical" {
   }
 }
 
-provider "local" {}
-
-provider "time" {}
+provider "openrouter" {
+  api_key = data.infisical_secrets.ouroboros.secrets.OPENROUTER_API_KEY.value
+}
