@@ -1,6 +1,14 @@
 static_resources:
+  secrets:
+  - name: openrouter_api_key
+    generic_secret:
+      secret:
+        environment_variable: OPENROUTER_API_KEY
+
   listeners:
-  - name: openrouter
+  # Plain HTTP listener for local testing from the host (published on
+  # 127.0.0.1:10000). Kept from the original proof of concept.
+  - name: openrouter_http
     address:
       socket_address:
         address: 0.0.0.0
@@ -8,7 +16,7 @@ static_resources:
     filter_chains:
     - filters:
       - name: envoy.filters.network.http_connection_manager
-        typed_config:
+        typed_config: &openrouter_hcm
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: openrouter
           route_config:
@@ -44,6 +52,30 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
+  # HTTPS listener: the sandbox container resolves openrouter.ai to this
+  # container's address, so omp can use the stock https://openrouter.ai
+  # endpoint. TLS terminates here with the locally issued certificate
+  # (certs/server.pem, signed by certs/ca.pem which the sandbox trusts).
+  - name: openrouter_https
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 443
+    filter_chains:
+    - transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: /etc/envoy/certs/server.pem
+              private_key:
+                filename: /etc/envoy/certs/server.key
+      filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config: *openrouter_hcm
+
   clusters:
   - name: openrouter
     type: LOGICAL_DNS
@@ -54,6 +86,9 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
+    # This container runs with --dns <host dnsmasq>: the proxy itself must
+    # resolve openrouter.ai to the REAL upstream. Only the sandbox container
+    # gets the proxy address, via its /etc/hosts entry.
     connect_timeout: 2s
     load_assignment:
       cluster_name: openrouter
@@ -69,9 +104,3 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: openrouter.ai
-
-  secrets:
-  - name: openrouter_api_key
-    generic_secret:
-      secret:
-        environment_variable: OPENROUTER_API_KEY

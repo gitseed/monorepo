@@ -1,14 +1,51 @@
-Test container networking:
+# credentials-proxy notes
 
-`container run --dns 203.0.113.113 --rm fedora/fedora:42 curl -4 --fail --silent --show-error --connect-timeout 2 --max-time 4 https://google.com/ --output /dev/null && echo 'outbound HTTPS OK'`
+Envoy with the credential-injector filter: callers authenticate with anything
+(or nothing); the real OpenRouter key is attached on this side of the
+boundary. The key arrives via infisical and only ever exists in this
+container, never in the sandbox.
 
-Build image:
+Two listeners, both injecting the same credential:
 
-`container build --pull --no-cache -t credentials-proxy --dns 203.0.113.113 -f main.containerfile .`
+- `127.0.0.1:10000` (plain HTTP, host only) — original PoC, handy for
+  debugging with curl.
+- `:443` (TLS, cert for openrouter.ai from `certs/`) — the sandbox container
+  resolves openrouter.ai to this container's address, so stock clients can
+  use the real https://openrouter.ai endpoint unchanged.
 
-Run image:
+One-time setup:
 
-`infisical run --env global --projectId b4d3e8f0-dec8-4bb7-bc71-bba7dd3401f0 -- container run --rm -it --name credentials-proxy --env OPENROUTER_API_KEY --dns 203.0.113.113 --publish 127.0.0.1:10000:10000 credentials-proxy`
+    ./generate-certs.sh   # local CA + openrouter.ai server cert; keys gitignored
 
-Test openrouter:
-`curl --fail-with-body --silent --show-error -H 'Authorization: wrong' http://127.0.0.1:10000/api/v1/key`
+Build:
+
+    container build --pull --no-cache \
+      -t credentials-proxy \
+      --dns 203.0.113.113 \
+      -f credentials-proxy/main.containerfile \
+      credentials-proxy/
+
+Run (detached, on the shared `agent` network; prints the container IP):
+
+    ./run.sh
+
+`--dns 203.0.113.113` routes DNS through the host's dnsmasq, required when
+Cloudflare WARP is connected. NOTE: in THIS container openrouter.ai must
+resolve to the real upstream — do not let dnsmasq rewrite it. Only the
+sandbox gets the proxy address (via its /etc/hosts entry).
+
+Quick checks from the host (IP printed by run.sh):
+
+    # plain-HTTP listener; injected key turns a bogus header into a 200
+    curl --fail-with-body --silent --show-error \
+      -H 'Authorization: wrong' http://127.0.0.1:10000/api/v1/auth/key
+
+    # TLS listener, exactly as the sandbox sees it
+    curl --fail-with-body --silent --show-error \
+      --cacert credentials-proxy/certs/ca.pem \
+      --resolve openrouter.ai:443:PROXY_IP \
+      -H 'Authorization: wrong' https://openrouter.ai/api/v1/auth/key
+
+Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
+
+Stop: `container stop credentials-proxy`

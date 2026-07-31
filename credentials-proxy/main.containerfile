@@ -7,16 +7,10 @@
 #     --file main.containerfile \
 #     .
 #
-# Run:
-#   infisical run --env global --projectId <project-id> -- \
-#     container run --rm -it \
-#       --name credentials-proxy \
-#       --env OPENROUTER_API_KEY \
-#       --dns 203.0.113.113 \
-#       --publish 127.0.0.1:10000:10000 \
-#       credentials-proxy
+# Run: ../../credentials-proxy/run.sh (or see NOTES.md)
 #
-# Then use http://127.0.0.1:10000/api/v1 as the OpenRouter base URL.
+# The runtime mounts ./certs at /etc/envoy/certs (TLS listener on 443)
+# and sets ENVOY_UID=0 so envoy keeps root and can bind 443.
 
 FROM docker.io/envoyproxy/envoy:v1.39-latest
 
