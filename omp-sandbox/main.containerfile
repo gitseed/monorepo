@@ -8,7 +8,7 @@
 # Build context is the monorepo root (the CA cert is copied from
 # credentials-proxy/certs/ca.pem):
 #
-#   ../credentials-proxy/generate-certs.sh   # if certs are missing
+#   ../credentials-proxy/materialize-certs.sh   # fetch tofu-managed certs first
 #   container build --pull --no-cache \
 #     --tag omp-sandbox \
 #     --dns 203.0.113.113 \

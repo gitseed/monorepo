@@ -13,9 +13,14 @@ Two listeners, both injecting the same credential:
   resolves openrouter.ai to this container's address, so stock clients can
   use the real https://openrouter.ai endpoint unchanged.
 
-One-time setup:
+Certificates are tofu-managed (`agent-secrets/tofu/credentials_proxy_cert.tf`)
+and stored in infisical; private keys never touch git. Materialize them locally:
 
-    ./generate-certs.sh   # local CA + openrouter.ai server cert; keys gitignored
+    ./materialize-certs.sh   # fetches certs/{ca.pem,server.pem,server.key} from infisical
+
+(run.sh does this automatically on every start, so rotations propagate on
+restart. Rotate by applying the tofu and restarting the proxy; rebuild the
+sandbox image afterwards so it picks up a rotated CA.)
 
 Build:
 
@@ -34,7 +39,8 @@ Cloudflare WARP is connected. NOTE: in THIS container openrouter.ai must
 resolve to the real upstream — do not let dnsmasq rewrite it. Only the
 sandbox gets the proxy address (via its /etc/hosts entry).
 
-Quick checks from the host (IP printed by run.sh):
+Quick checks from the host (IP printed by run.sh; proxying assumes you've
+materialized certs):
 
     # plain-HTTP listener; injected key turns a bogus header into a 200
     curl --fail-with-body --silent --show-error \

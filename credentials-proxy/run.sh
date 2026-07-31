@@ -1,15 +1,14 @@
 #!/bin/bash
 # Starts the credentials-proxy (envoy) on the shared container network.
 # The real OpenRouter key is pulled from infisical and never leaves this
-# host side of the boundary.
+# host side of the boundary. Same source for the TLS certificates, which
+# are tofu-managed: agent-secrets/tofu/credentials_proxy_cert.tf
 set -euo pipefail
 cd "$(dirname "$0")"
 
 NETWORK=agent
 
-if [[ ! -f certs/server.pem ]]; then
-    ./generate-certs.sh
-fi
+./materialize-certs.sh
 
 if container inspect credentials-proxy >/dev/null 2>&1; then
     echo "credentials-proxy already running:"

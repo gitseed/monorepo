@@ -8,6 +8,10 @@ terraform {
       source  = "cloudopsworks/openrouter"
       version = "0.2.18"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "4.1.0"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"

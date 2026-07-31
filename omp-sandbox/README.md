@@ -28,8 +28,9 @@ flowchart LR
 ## Setup
 
 ```sh
-../credentials-proxy/generate-certs.sh   # once; creates credentials-proxy/certs/
-../credentials-proxy/run.sh              # starts envoy on the `agent` network
+# certs are tofu-managed and live in infisical; fetch them once (and after rotations):
+../credentials-proxy/materialize-certs.sh
+../credentials-proxy/run.sh                  # starts envoy on the `agent` network
 
 # build (context is the monorepo root — it needs credentials-proxy/certs/ca.pem)
 container build --pull --no-cache \
