@@ -3,50 +3,60 @@
 Raw material for future skills. Grouped by theme; each entry is something
 verified empirically in this repo, not theory.
 
-## apple/container CLI
+## docker on OrbStack
 
-- Each container runs in its own VM. Guest -> guest traffic on the same
-  network works (verified 200). Publishing host ports below 1024 silently
-  fails (`-p 443:80` bound nothing; `curl 127.0.0.1:443` got nothing while
-  the container ran fine). Guest-to-guest is therefore how sandbox ->
-  proxy traffic must go; DNS (or /etc/hosts) maps the hostname to the
-  proxy container's VM IP.
-- No container NAME resolution on custom networks. `getent hosts webtest2`
-  plus qualified variants (`.test`, `.local`, network-suffixed) all failed
-  on the `agent` network even though `container inspect` shows a hostname
-  and the table shows the IP. Use `container inspect ... |
-  .status.networks[].ipv4Address` to discover peers.
-- `/etc/hosts` IS writable inside the container and honored by getaddrinfo
-  (a dnsmasq lookup returned the real IP while curl connected per the hosts
-  entry). Cleanest way to remap a hostname per-container; hosts = NSS
-  files, beats DNS.
-- `--dns` is repeatable AND additive to the defaults: `--dns 192.168.65.1
-  --dns 203.0.113.113` produced both nameservers in the guest's
-  resolv.conf, external resolution still worked.
-- `container run --name X` when X exists errors "container with id X
-  already exists" (leftover stopped container records block reuse).
-  `-it` headless crashes with NSPOSIXErrorDomain Code=19 at container
-  launch; only pass `-it` when a TTY exists (`[[ -t 0 && -t 1 ]]`).
-- `container inspect` shape: `.[0].status.state`, `.[0].status.networks[]`
-  (.ipv4Address carries the /24 suffix -- strip it), `.configuration.id`.
-  Image inspect: `.[0].configuration.creationDate` (ISO, UTC) for age
-  checks.
-- `container build --secret id=X,env=VAR` + `RUN --mount=type=secret,id=X`
+Runtime since 2026-08-01; replaced apple/container after
+apple/container#2051 (two NAT networks can share one bridge ifnet; the
+first teardown destroys the other's egress silently until helper restart).
+All of the below verified on OrbStack/docker 29 unless said otherwise.
+
+- Custom networks resolve container NAMES by default (embedded DNS
+  127.0.0.11): `getent hosts <name>` works from guests, and
+  guest-to-guest connectivity by name was verified (`nc -z <name> 80`).
+  Use `docker inspect` for out-of-band discovery anyway, via
+  `.[0].NetworkSettings.Networks[NET].IPAddress` (plain IP, no CIDR
+  suffix -- apple/container's needed `sub("/.*";"")`).
+- The HOST can reach container IPs directly (no publish needed):
+  `curl 192.168.97.2:80` connected from macOS to a bridged guest
+  (docs.orbstack.dev/docker/network confirmed). `-p` publish still needed
+  only for host-loopback niceness. Containers also answer to
+  `<name>.orb.local` from the Mac with zero config.
+- `docker inspect` shape: `.[0].State.Status` for state; image age via
+  `.[0].Created` (RFC3339 UTC, `${:0:10}` slices the date).
+- `/etc/hosts` inside a docker container is a per-container BIND-MOUNTED
+  file (unlike apple/container, where it was a plain file): writes
+  in-place are honored by getaddrinfo, but `sed -i` fails with "Device or
+  resource busy" because it renames a temp file over a mount point.
+  Don't edit it at all -- `docker run --add-host name:IP` maps a hostname
+  per-container from the daemon side, scoped to that container (verified;
+  it replaced the old entrypoint + OPENROUTER_PROXY_IP plumbing). Prefer
+  --add-host over a network alias when the alias must not leak to other
+  containers on a shared network (embedded DNS answers for everyone).
+- OrbStack runs container DNS through the host's resolver stack, so
+  resolution keeps working under Cloudflare WARP -- the old
+  `--dns <host dnsmasq>` workaround was retired (verified: default-DNS
+  fetch of openrouter.ai/api/v1/models works from an alpine guest with
+  WARP-connected host resolvers).
+- `docker build` (buildx) has NO `--dns` flag -- unknown-flag error.
+  Build-time DNS just works via OrbStack anyway (dnf/apt/registry pulls
+  all resolved during `up.sh`'s builds).
+- `docker build --secret id=X,env=VAR` + `RUN --mount=type=secret,id=X`
   threads a secret into build without disk files. Buildkit NEVER
   cache-busts on secret contents -- after secret rotation a cached build
   ships the stale value. Date-based staleness or `--no-cache` is the safe
-  default.
-- Under Cloudflare WARP, guest outbound DNS times out via the default
-  resolver. `--dns 203.0.113.113` routes to the host dnsmasq and fixes it
-  (verify whether any non-gateway IP works equivalently; currently
-  undocumented magic).
-- docker.io image pulls hit 401 "no credentials found ... registry-1
-  .docker.io" -- use quay.io (fedora) mirror for testing.
+  default. (Same buildkit as apple/container.)
+- `docker build` pulls docker.io natively -- the quay.io-mirror
+  workaround is obsolete (kept for the sandbox base; both work).
+- `-it` without a TTY fails here too ("the input device is not a TTY" vs
+  apple/container's NSPOSIXErrorDomain Code=19); only pass `-it` when a
+  TTY exists (`[[ -t 0 && -t 1 ]]`).
+- `docker run --name X` when X exists errors like apple/container did
+  (leftover stopped containers block reuse); `docker rm -f` is the fix.
 - Labels/naming: session-scoped containers named `<purpose>-<host pid>`
   lets a later run detect and reap orphans (a SIGKILLed harness can't run
   its own EXIT trap).
-- `hub stop` / SIGTERM on `container run -d`-started orchestrators does
-  NOT guarantee in-container traps run; EXIT traps only fire on graceful
+- `hub stop` / SIGTERM on `docker run -d`-started orchestrators does NOT
+  guarantee in-container traps run; EXIT traps only fire on graceful
   foreground exit. Design for reaping, not relying on traps alone.
 
 ## envoy
@@ -82,7 +92,7 @@ verified empirically in this repo, not theory.
 - `infisical secrets get NAME --plain` prints the raw value (pipe-safe).
 - `infisical run -- <cmd>` merges the project's secrets into the child env;
   passing them onward into containers is just `--env NAME` (no value) on
-  `container run`.
+  `docker run`.
 
 ## opentofu
 
@@ -105,7 +115,7 @@ verified empirically in this repo, not theory.
   headless becomes meaningless by construction.
 - `kill -9 $!` on `nohup ./script &` kills the WRAPPER, not script.$$ --
   the child keeps running with its containers alive. Any conclusion drawn
-  from it (orphans! reaper needed!) is noise. Check `ps` + `container ls`
+  from it (orphans! reaper needed!) is noise. Check `ps` + `docker ps`
   for ground truth before writing the fix.
 - When results contradict the model, measure before editing. The trap of
   the session: hallucinated threat (zombie processes holding containers)

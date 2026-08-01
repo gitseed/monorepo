@@ -2,17 +2,17 @@
 
 # omp coding-agent sandbox. No real credentials inside: the only model
 # endpoint reachable with valid auth is https://openrouter.ai, which the
-# entrypoint routes (via /etc/hosts, using $OPENROUTER_PROXY_IP) to the
-# credentials-proxy container, where envoy injects the real API key.
+# runner routes to the credentials-proxy container (--add-host in
+# up.sh maps openrouter.ai to the proxy's IP in /etc/hosts), where
+# envoy injects the real API key.
 #
 # The CA cert arrives as a build secret straight from infisical; no disk
 # files, no committed material (from monorepo root; or just run
 # omp-sandbox/scripts/up.sh):
 #
 #   infisical run -- \
-#     container build --pull --no-cache \
+#     docker build --pull --no-cache \
 #       --tag omp-sandbox \
-#       --dns 203.0.113.113 \
 #       --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
 #       --file omp-sandbox/container/main.containerfile \
 #       omp-sandbox/container/
@@ -64,6 +64,4 @@ modelRoles:
 setupVersion: 1
 EOF
 
-COPY --chmod=0755 entrypoint.sh /usr/local/bin/omp-sandbox-entrypoint
-ENTRYPOINT ["/usr/local/bin/omp-sandbox-entrypoint"]
 CMD ["bash"]

@@ -1,7 +1,11 @@
 # omp-sandbox
 
-The omp coding agent in an [apple/container](https://github.com/apple/container)
+The omp coding agent in an [OrbStack](https://orbstack.dev) (docker CLI)
 sandbox with **no leakable credentials inside**.
+
+(Previously apple/container; dropped over its bridge-ifnet collision bug,
+[apple/container#2051](https://github.com/apple/container/issues/2051),
+which silently kills a NAT network's egress.)
 
 ```mermaid
 flowchart LR
@@ -17,7 +21,8 @@ flowchart LR
 - The sandbox carries only a **dummy** `OPENROUTER_API_KEY`
   (`dummy-replaced-by-proxy`) so omp considers the provider available.
 - The sandbox resolves `openrouter.ai` to the **proxy container's** address
-  (`/etc/hosts`, written by the entrypoint from `$OPENROUTER_PROXY_IP`).
+  (`/etc/hosts`, mapped at container-create time with
+  `--add-host openrouter.ai:PROXY_IP`).
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
@@ -36,14 +41,13 @@ flowchart LR
 WORKSPACE=~/project ./scripts/up.sh
 ```
 
-The script discovers the session proxy's address via `container inspect` and
-passes it as `OPENROUTER_PROXY_IP`; the sandbox entrypoint maps
-`openrouter.ai` there in /etc/hosts. Exiting the sandbox (or Ctrl-C) stops
+The script discovers the session proxy's address via `docker inspect` and
+maps `openrouter.ai` there with `--add-host` on the sandbox's `docker run`. Exiting the sandbox (or Ctrl-C) stops
 both containers via a trap -- no credential-bearing process outlives a
 session, and no sandbox can point at a stale proxy address.
 
 Cert rotation is absorbed by the daily staleness rebuild; same-day rotation
-needs `container image rm omp-sandbox` (buildkit never busts its cache on
+needs `docker image rm omp-sandbox` (buildkit never busts its cache on
 build-secret contents).
 
 ## Verified

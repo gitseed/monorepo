@@ -29,25 +29,32 @@ sandbox image (daily staleness) and starts a proxy with the new material.
 
 ## Networking note
 
-`--dns 203.0.113.113` routes container DNS through the host dnsmasq —
-required when Cloudflare WARP is connected (the default resolver otherwise
-times out). In *this* container openrouter.ai must resolve to the real
-upstream; only the sandbox remaps it (to the proxy, via /etc/hosts).
+OrbStack runs container DNS through the host's resolver stack, so upstream
+resolution keeps working under Cloudflare WARP (the `--dns <host dnsmasq>`
+work-around from the apple/container era is gone). In *this* container
+openrouter.ai must resolve to the real upstream; only the sandbox remaps it
+(to the proxy, via /etc/hosts).
 
 ## Manual debug proxy
 
 `up.sh` runs a per-session proxy. For a long-lived one instead:
 
     infisical run -- \
-      container run --rm -d --name credentials-proxy \
-        --network agent --dns 203.0.113.113 \
+      docker run --rm -d --name credentials-proxy \
+        -p 127.0.0.1:10000:10000 \
+        --network agent \
         --env OPENROUTER_API_KEY --env CREDENTIALS_PROXY_SERVER_CERT \
         --env CREDENTIALS_PROXY_SERVER_KEY \
         credentials-proxy
 
+(The `-p` publish is what makes the 127.0.0.1:10000 check below work from
+the host; session proxies from `up.sh` don't need it -- the sandbox talks to
+the proxy's container IP directly, which OrbStack routes from guest to guest.)
+
 ## Quick checks
 
-PROXY_IP = a live session proxy's address (`container ls`).
+PROXY_IP = a live session proxy's address (`docker ps` + `docker inspect`, or
+grab it from `up.sh`'s startup output).
 
     # plain-HTTP listener; injected key turns a bogus header into a 200
     curl --fail-with-body --silent --show-error \

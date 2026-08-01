@@ -88,9 +88,9 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
-    # This container runs with --dns <host dnsmasq>: the proxy itself must
-    # resolve openrouter.ai to the REAL upstream. Only the sandbox container
-    # gets the proxy address, via its /etc/hosts entry.
+    # The proxy itself must resolve openrouter.ai to the REAL upstream.
+    # Only the sandbox container gets the proxy address, via its
+    # /etc/hosts entry.
     connect_timeout: 2s
     load_assignment:
       cluster_name: openrouter
