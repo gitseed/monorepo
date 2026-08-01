@@ -8,7 +8,7 @@
 # The CA cert arrives as a build secret straight from infisical; no disk
 # files, no committed material:
 #
-#   infisical run --env global --projectId <project-id> -- \
+#   infisical run -- \
 #     container build --pull --no-cache \
 #       --tag omp-sandbox \
 #       --dns 203.0.113.113 \

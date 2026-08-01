@@ -45,8 +45,7 @@ Quick checks from the host (IP printed by run.sh):
 
     # TLS listener, exactly as the sandbox sees it
     curl --fail-with-body --silent --show-error \
-      --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT \
-        --env global --projectId <project-id> --plain) \
+      --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT --plain) \
       --resolve openrouter.ai:443:PROXY_IP \
       -H 'Authorization: wrong' https://openrouter.ai/api/v1/auth/key
 

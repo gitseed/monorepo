@@ -69,6 +69,18 @@ locals {
   }
 }
 
+# Local CLI link for this monorepo: lets `infisical run` / `infisical secrets`
+# work with zero --projectId/--env flags. Gitignored; regenerated on apply.
+# Generated into the monorepo root (two levels up from this module).
+resource "local_sensitive_file" "infisical_project_config" {
+  filename        = "${path.module}/../../.infisical.json"
+  file_permission = "0600"
+  content = jsonencode({
+    workspaceId        = infisical_project.agent.id
+    defaultEnvironment = infisical_project_environment.global.slug
+  })
+}
+
 resource "infisical_secret" "credentials_proxy_cert" {
   for_each = local.credentials_proxy_cert_secrets
 

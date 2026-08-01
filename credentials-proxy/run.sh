@@ -15,7 +15,9 @@ if container inspect credentials-proxy >/dev/null 2>&1; then
     exit 0
 fi
 
-infisical run --env global --projectId b4d3e8f0-dec8-4bb7-bc71-bba7dd3401f0 -- \
+# Project + environment come from the tofu-generated, gitignored .infisical.json
+# at the monorepo root (agent-secrets/tofu/credentials_proxy_cert.tf).
+infisical run -- \
     container run --rm -d \
         --name credentials-proxy \
         --network "$NETWORK" \
