@@ -54,6 +54,14 @@ ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pe
 # this value is never usable on its own.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 
+# Pre-seeded config: skip the first-run wizard and pin the default model.
+# Auth itself comes from the proxy, not from anything here.
+RUN mkdir -p /root/.omp/agent && cat > /root/.omp/agent/config.yml <<'EOF'
+modelRoles:
+  default: openrouter/deepseek/deepseek-v4-flash-0731
+setupVersion: 1
+EOF
+
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/omp-sandbox-entrypoint
 ENTRYPOINT ["/usr/local/bin/omp-sandbox-entrypoint"]
 CMD ["bash"]
