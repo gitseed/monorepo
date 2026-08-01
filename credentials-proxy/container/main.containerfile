@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
-# Build:
+# Build (from monorepo root; or just run omp-sandbox/scripts/up.sh):
 #   container build --pull --no-cache \
 #     --tag credentials-proxy \
 #     --dns 203.0.113.113 \
-#     --file main.containerfile \
-#     .
+#     --file credentials-proxy/container/main.containerfile \
+#     credentials-proxy/container/
 #
-# Run via ../omp-sandbox/up.sh (per-session proxy; or see NOTES.md)
+# Run via ../../omp-sandbox/scripts/up.sh (per-session proxy; see ../README.md)
 #
 # Server cert+key arrive via the environment (infisical); no cert files.
 # The envoy binary gets ONLY cap_net_bind_service so it can bind :443 while

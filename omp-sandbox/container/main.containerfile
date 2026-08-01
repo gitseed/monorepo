@@ -6,17 +6,19 @@
 # credentials-proxy container, where envoy injects the real API key.
 #
 # The CA cert arrives as a build secret straight from infisical; no disk
-# files, no committed material:
+# files, no committed material (from monorepo root; or just run
+# omp-sandbox/scripts/up.sh):
 #
 #   infisical run -- \
 #     container build --pull --no-cache \
 #       --tag omp-sandbox \
 #       --dns 203.0.113.113 \
 #       --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
-#       --file omp-sandbox/main.containerfile \
-#       omp-sandbox/
+#       --file omp-sandbox/container/main.containerfile \
+#       omp-sandbox/container/
 #
-# Run via omp-sandbox/run.sh, which discovers the proxy address and wires it up.
+# Run via omp-sandbox/scripts/up.sh, which discovers the proxy address and
+# wires it up.
 
 FROM quay.io/fedora/fedora:42
 

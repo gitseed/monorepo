@@ -1,9 +1,9 @@
 #!/bin/bash
 # The whole sandbox boundary in one command:
 #
-#   omp-sandbox/up.sh                  # build if stale, session proxy, interactive omp
-#   WORKSPACE=~/proj omp-sandbox/up.sh # different directory mounted at /workspace
-#   omp-sandbox/up.sh bash             # a plain shell instead of omp
+#   omp-sandbox/scripts/up.sh                  # build if stale, session proxy, interactive omp
+#   WORKSPACE=~/proj omp-sandbox/scripts/up.sh # different directory mounted at /workspace
+#   omp-sandbox/scripts/up.sh bash             # a plain shell instead of omp
 #
 # Builds: each image is rebuilt only if it was NOT built today. This doubles
 # as the cert-rotation path: a tofu-applied rotation is picked up by the next
@@ -16,7 +16,13 @@
 set -euo pipefail
 
 CALLER_CWD=$PWD
-cd "$(dirname "$0")/.."
+# Must run from inside the monorepo (uses git rev-parse so aliases work from
+# any subdirectory).
+ROOT=$(git rev-parse --show-toplevel) || {
+    echo "up.sh: must be run from inside the monorepo" >&2
+    exit 1
+}
+cd "$ROOT"
 
 NETWORK=agent
 PROXY_NAME=credentials-proxy-$$
@@ -57,8 +63,8 @@ if stale credentials-proxy; then
     container build --pull --no-cache \
         --tag credentials-proxy \
         --dns 203.0.113.113 \
-        --file credentials-proxy/main.containerfile \
-        credentials-proxy/
+        --file credentials-proxy/container/main.containerfile \
+        credentials-proxy/container/
 fi
 
 if stale omp-sandbox; then
@@ -68,8 +74,8 @@ if stale omp-sandbox; then
             --tag omp-sandbox \
             --dns 203.0.113.113 \
             --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
-            --file omp-sandbox/main.containerfile \
-            omp-sandbox/
+            --file omp-sandbox/container/main.containerfile \
+            omp-sandbox/container/
 fi
 
 echo "starting credentials proxy..."

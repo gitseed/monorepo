@@ -29,11 +29,11 @@ flowchart LR
 ## Run
 
 ```sh
-./up.sh            # one command, from cold: builds (only when not built
-                   # today), fresh per-session proxy in the background,
-                   # foreground omp in your cwd
-./up.sh bash       # plain shell instead
-WORKSPACE=~/project ./up.sh
+./scripts/up.sh            # one command, from cold: builds (only when not built
+                           # today), fresh per-session proxy in the background,
+                           # foreground omp in your cwd
+./scripts/up.sh bash       # plain shell instead
+WORKSPACE=~/project ./scripts/up.sh
 ```
 
 The script discovers the session proxy's address via `container inspect` and
@@ -48,7 +48,7 @@ build-secret contents).
 
 ## Verified
 
-- `omp -p ... --model openrouter/anthropic/claude-haiku-4.5` inside the
-  sandbox answers through the proxy (real key never present).
+- `omp -p ...` inside the sandbox answers through the proxy (real key never
+  present).
 - `Authorization: Bearer bogus` through the proxy → 200 (overwrite works).
 - Direct to the real endpoint with the sandbox's key → 401.
