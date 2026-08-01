@@ -29,16 +29,17 @@ flowchart LR
 ## Setup
 
 ```sh
-# the CA cert is tofu-managed/infisical-stored; fetch it (and after rotations):
-../credentials-proxy/fetch-ca-cert.sh
-../credentials-proxy/run.sh              # starts envoy on the `agent` network
+../credentials-proxy/run.sh   # starts envoy on the `agent` network
 
-# build (context is the monorepo root — it needs credentials-proxy/certs/ca.pem)
-container build --pull --no-cache \
-  --tag omp-sandbox \
-  --dns 203.0.113.113 \
-  --file omp-sandbox/main.containerfile \
-  .
+# build: the CA cert arrives as a build secret straight from infisical;
+# nothing on disk, nothing committed
+infisical run --env global --projectId <project-id> -- \
+  container build --pull --no-cache \
+    --tag omp-sandbox \
+    --dns 203.0.113.113 \
+    --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
+    --file omp-sandbox/main.containerfile \
+    omp-sandbox/
 ```
 
 ## Run

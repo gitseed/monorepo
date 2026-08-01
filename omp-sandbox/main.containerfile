@@ -5,15 +5,16 @@
 # entrypoint routes (via /etc/hosts, using $OPENROUTER_PROXY_IP) to the
 # credentials-proxy container, where envoy injects the real API key.
 #
-# Build context is the monorepo root (the CA cert is copied from
-# credentials-proxy/certs/ca.pem):
+# The CA cert arrives as a build secret straight from infisical; no disk
+# files, no committed material:
 #
-#   ../credentials-proxy/fetch-ca-cert.sh   # fetch the tofu-managed CA first
-#   container build --pull --no-cache \
-#     --tag omp-sandbox \
-#     --dns 203.0.113.113 \
-#     --file omp-sandbox/main.containerfile \
-#     .
+#   infisical run --env global --projectId <project-id> -- \
+#     container build --pull --no-cache \
+#       --tag omp-sandbox \
+#       --dns 203.0.113.113 \
+#       --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
+#       --file omp-sandbox/main.containerfile \
+#       omp-sandbox/
 #
 # Run via omp-sandbox/run.sh, which discovers the proxy address and wires it up.
 
@@ -40,8 +41,9 @@ RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/i
         | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
 
 # Trust the local CA that signs the proxy's openrouter.ai certificate.
-COPY credentials-proxy/certs/ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem
-RUN update-ca-trust extract
+RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
+    cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
+    && update-ca-trust extract
 
 # Bun's fetch ignores the system store; omp honours NODE_EXTRA_CA_CERTS for
 # every provider request, so point it at the same CA explicitly.
@@ -52,6 +54,6 @@ ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pe
 # this value is never usable on its own.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 
-COPY --chmod=0755 omp-sandbox/entrypoint.sh /usr/local/bin/omp-sandbox-entrypoint
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/omp-sandbox-entrypoint
 ENTRYPOINT ["/usr/local/bin/omp-sandbox-entrypoint"]
 CMD ["bash"]

@@ -15,13 +15,10 @@ Two listeners, both injecting the same credential:
   cert+key straight from its environment; no key material on disk.
 
 Certificates are tofu-managed (`agent-secrets/tofu/credentials_proxy_cert.tf`)
-and stored in infisical. The only local fetch: the public CA cert, needed to
-build the sandbox image:
-
-    ./fetch-ca-cert.sh   # writes certs/ca.pem
-
-Rotate by applying the tofu, restarting the proxy, and rebuilding the sandbox
-image (the CA is baked into it).
+and stored in infisical. The proxy gets the server cert+key purely through
+its environment; the sandbox image gets the public CA cert as a build
+secret. No cert files anywhere. Rotate by applying the tofu, restarting the
+proxy, and rebuilding the sandbox image (the CA is baked into it).
 
 Build:
 
@@ -48,7 +45,8 @@ Quick checks from the host (IP printed by run.sh):
 
     # TLS listener, exactly as the sandbox sees it
     curl --fail-with-body --silent --show-error \
-      --cacert credentials-proxy/certs/ca.pem \
+      --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT \
+        --env global --projectId <project-id> --plain) \
       --resolve openrouter.ai:443:PROXY_IP \
       -H 'Authorization: wrong' https://openrouter.ai/api/v1/auth/key
 

@@ -1,3 +1,0 @@
-# Local CA + server certs: regenerate with ./generate-certs.sh
-certs/*
-!certs/.gitkeep
