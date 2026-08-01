@@ -54,8 +54,8 @@ static_resources:
 
   # HTTPS listener: the sandbox container resolves openrouter.ai to this
   # container's address, so omp can use the stock https://openrouter.ai
-  # endpoint. TLS terminates here with the locally issued certificate
-  # (certs/server.pem, signed by certs/ca.pem which the sandbox trusts).
+  # endpoint. TLS terminates here with a certificate from infisical
+  # (tofu-issued; the sandbox trusts its CA).
   - name: openrouter_https
     address:
       socket_address:
@@ -68,10 +68,12 @@ static_resources:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
           common_tls_context:
             tls_certificates:
+            # PEMs come from infisical via the container's environment
+            # (see run.sh). No key material on disk, here or on the host.
             - certificate_chain:
-                filename: /etc/envoy/certs/server.pem
+                environment_variable: CREDENTIALS_PROXY_SERVER_CERT
               private_key:
-                filename: /etc/envoy/certs/server.key
+                environment_variable: CREDENTIALS_PROXY_SERVER_KEY
       filters:
       - name: envoy.filters.network.http_connection_manager
         typed_config: *openrouter_hcm

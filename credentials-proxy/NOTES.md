@@ -2,25 +2,26 @@
 
 Envoy with the credential-injector filter: callers authenticate with anything
 (or nothing); the real OpenRouter key is attached on this side of the
-boundary. The key arrives via infisical and only ever exists in this
-container, never in the sandbox.
+boundary. The key arrives via `infisical run` and only ever exists in this
+container's environment, never in the sandbox and never on disk.
 
 Two listeners, both injecting the same credential:
 
 - `127.0.0.1:10000` (plain HTTP, host only) — original PoC, handy for
   debugging with curl.
-- `:443` (TLS, cert for openrouter.ai from `certs/`) — the sandbox container
-  resolves openrouter.ai to this container's address, so stock clients can
-  use the real https://openrouter.ai endpoint unchanged.
+- `:443` (TLS, cert for openrouter.ai) — the sandbox container resolves
+  openrouter.ai to this container's address, so stock clients can use the
+  real https://openrouter.ai endpoint unchanged. Envoy reads the server
+  cert+key straight from its environment; no key material on disk.
 
 Certificates are tofu-managed (`agent-secrets/tofu/credentials_proxy_cert.tf`)
-and stored in infisical; private keys never touch git. Materialize them locally:
+and stored in infisical. The only local fetch: the public CA cert, needed to
+build the sandbox image:
 
-    ./materialize-certs.sh   # fetches certs/{ca.pem,server.pem,server.key} from infisical
+    ./fetch-ca-cert.sh   # writes certs/ca.pem
 
-(run.sh does this automatically on every start, so rotations propagate on
-restart. Rotate by applying the tofu and restarting the proxy; rebuild the
-sandbox image afterwards so it picks up a rotated CA.)
+Rotate by applying the tofu, restarting the proxy, and rebuilding the sandbox
+image (the CA is baked into it).
 
 Build:
 
@@ -39,8 +40,7 @@ Cloudflare WARP is connected. NOTE: in THIS container openrouter.ai must
 resolve to the real upstream — do not let dnsmasq rewrite it. Only the
 sandbox gets the proxy address (via its /etc/hosts entry).
 
-Quick checks from the host (IP printed by run.sh; proxying assumes you've
-materialized certs):
+Quick checks from the host (IP printed by run.sh):
 
     # plain-HTTP listener; injected key turns a bogus header into a 200
     curl --fail-with-body --silent --show-error \

@@ -6,7 +6,7 @@ Because we have the admin credentials from ouroboros, we can create many credent
 
 Tofu-managed secrets in the `agent` project:
 * `OPENROUTER_API_KEY` (openrouter.tf): provisioned API key, injected into envoy by the credentials-proxy.
-* `CREDENTIALS_PROXY_CA_CERT` / `CREDENTIALS_PROXY_CA_KEY` / `CREDENTIALS_PROXY_SERVER_CERT` / `CREDENTIALS_PROXY_SERVER_KEY` (credentials_proxy_cert.tf): TLS for the sandbox <-> proxy interception endpoint. The proxy and the sandbox image fetch what they need via credentials-proxy/materialize-certs.sh; the CA private key never leaves state/vault.
+* `CREDENTIALS_PROXY_CA_CERT` / `CREDENTIALS_PROXY_CA_KEY` / `CREDENTIALS_PROXY_SERVER_CERT` / `CREDENTIALS_PROXY_SERVER_KEY` (credentials_proxy_cert.tf): TLS for the sandbox <-> proxy interception endpoint. Envoy receives the server cert+key purely through its environment (credentials-proxy/run.sh); the sandbox image build fetches the public CA cert via credentials-proxy/fetch-ca-cert.sh. Private keys never leave state/vault/env.
 
 Manually created credentials:
 * Github read only PAT: Github is literally the worst don't even get me started.

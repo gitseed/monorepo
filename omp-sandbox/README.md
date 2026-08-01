@@ -18,8 +18,9 @@ flowchart LR
   (`dummy-replaced-by-proxy`) so omp considers the provider available.
 - The sandbox resolves `openrouter.ai` to the **proxy container's** address
   (`/etc/hosts`, written by the entrypoint from `$OPENROUTER_PROXY_IP`).
-- The proxy terminates TLS with a locally issued cert (the sandbox image
-  bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
+- The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
+  to envoy purely via its environment, no key material on disk (the sandbox
+  image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
   **overwrites** the `Authorization` header with the real key, and forwards
   to actual openrouter.ai, which in *that* container resolves to the real IP.
 - Bypass test: from inside the sandbox, hitting the real openrouter.ai IP
@@ -28,9 +29,9 @@ flowchart LR
 ## Setup
 
 ```sh
-# certs are tofu-managed and live in infisical; fetch them once (and after rotations):
-../credentials-proxy/materialize-certs.sh
-../credentials-proxy/run.sh                  # starts envoy on the `agent` network
+# the CA cert is tofu-managed/infisical-stored; fetch it (and after rotations):
+../credentials-proxy/fetch-ca-cert.sh
+../credentials-proxy/run.sh              # starts envoy on the `agent` network
 
 # build (context is the monorepo root — it needs credentials-proxy/certs/ca.pem)
 container build --pull --no-cache \
