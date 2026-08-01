@@ -29,20 +29,22 @@ flowchart LR
 ## Run
 
 ```sh
-./up.sh                     # one command from cold: images + proxy, then interactive omp
-./up.sh --build             # force a --no-cache sandbox rebuild (after cert rotation)
-./up.sh bash                # plain shell instead of omp
+./up.sh            # one command, from cold: builds (only when not built
+                   # today), fresh per-session proxy in the background,
+                   # foreground omp in your cwd
+./up.sh bash       # plain shell instead
 WORKSPACE=~/project ./up.sh
 ```
 
-Idempotent: the proxy start no-ops when already running, images are built
-only when missing (or with `--build`). Pieces individually:
-`../credentials-proxy/build.sh` / `run.sh`, `./build.sh` / `./run.sh`.
+The script discovers the session proxy's address via `container inspect` and
+passes it as `OPENROUTER_PROXY_IP`; the sandbox entrypoint maps
+`openrouter.ai` there in /etc/hosts. Exiting the sandbox (or Ctrl-C) stops
+both containers via a trap -- no credential-bearing process outlives a
+session, and no sandbox can point at a stale proxy address.
 
-`run.sh` discovers the proxy's current address via `container inspect` and
-injects it as `OPENROUTER_PROXY_IP`; the sandbox entrypoint maps
-`openrouter.ai` there. Re-run whenever the proxy restarts (its IP changes);
-a running sandbox must be restarted too.
+Cert rotation is absorbed by the daily staleness rebuild; same-day rotation
+needs `container image rm omp-sandbox` (buildkit never busts its cache on
+build-secret contents).
 
 ## Verified
 

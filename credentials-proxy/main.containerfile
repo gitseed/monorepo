@@ -7,7 +7,7 @@
 #     --file main.containerfile \
 #     .
 #
-# Run: ./run.sh (or see NOTES.md)
+# Run via ../omp-sandbox/up.sh (per-session proxy; or see NOTES.md)
 #
 # Server cert+key arrive via the environment (infisical) and run.sh sets
 # ENVOY_UID=0 so envoy keeps root and can bind 443. No cert files needed.
