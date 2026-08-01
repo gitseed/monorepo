@@ -28,7 +28,7 @@ proxy instead:
       container run --rm -d --name credentials-proxy \
         --network agent --dns 203.0.113.113 \
         --env OPENROUTER_API_KEY --env CREDENTIALS_PROXY_SERVER_CERT \
-        --env CREDENTIALS_PROXY_SERVER_KEY --env ENVOY_UID=0 \
+        --env CREDENTIALS_PROXY_SERVER_KEY \
         credentials-proxy
 
 `--dns 203.0.113.113` routes DNS through the host's dnsmasq, required when

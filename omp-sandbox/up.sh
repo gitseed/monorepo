@@ -80,7 +80,6 @@ infisical run -- \
         --env OPENROUTER_API_KEY \
         --env CREDENTIALS_PROXY_SERVER_CERT \
         --env CREDENTIALS_PROXY_SERVER_KEY \
-        --env ENVOY_UID=0 \
         --dns 203.0.113.113 \
         credentials-proxy >/dev/null
 

@@ -9,9 +9,16 @@
 #
 # Run via ../omp-sandbox/up.sh (per-session proxy; or see NOTES.md)
 #
-# Server cert+key arrive via the environment (infisical) and run.sh sets
-# ENVOY_UID=0 so envoy keeps root and can bind 443. No cert files needed.
+# Server cert+key arrive via the environment (infisical); no cert files.
+# The envoy binary gets ONLY cap_net_bind_service so it can bind :443 while
+# still dropping to the unprivileged envoy user it runs as by default.
 
 FROM docker.io/envoyproxy/envoy:v1.39-latest
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libcap2-bin \
+    && setcap 'cap_net_bind_service=+ep' /usr/local/bin/envoy \
+    && apt-get purge -y libcap2-bin \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=0444 envoy.yaml /etc/envoy/envoy.yaml
