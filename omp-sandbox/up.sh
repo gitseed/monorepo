@@ -23,8 +23,21 @@ PROXY_NAME=credentials-proxy-$$
 SANDBOX_NAME=omp-sandbox-$$
 
 cleanup() {
-    container rm -f "$SANDBOX_NAME" >/dev/null 2>&1 || true
-    container rm -f "$PROXY_NAME" >/dev/null 2>&1 || true
+    local status=$?
+    # --rm containers are usually already gone at this point, which is fine
+    # and silent. What must never pass silently: a container that is still
+    # alive and cannot be stopped -- in particular the proxy, which holds
+    # injected credentials for as long as it runs.
+    local name
+    for name in "$SANDBOX_NAME" "$PROXY_NAME"; do
+        container inspect "$name" >/dev/null 2>&1 || continue
+        if ! container stop "$name" >/dev/null 2>&1; then
+            echo "WARNING: could not stop $name -- it may still be running." >&2
+            echo "         stop it manually: container rm -f $name" >&2
+            status=1
+        fi
+    done
+    return $status
 }
 trap cleanup EXIT
 
