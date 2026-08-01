@@ -26,34 +26,23 @@ flowchart LR
 - Bypass test: from inside the sandbox, hitting the real openrouter.ai IP
   directly with the in-sandbox key returns 401. There is nothing to leak.
 
-## Setup
-
-```sh
-../credentials-proxy/run.sh   # starts envoy on the `agent` network
-
-# build: the CA cert arrives as a build secret straight from infisical;
-# nothing on disk, nothing committed
-infisical run -- \
-  container build --pull --no-cache \
-    --tag omp-sandbox \
-    --dns 203.0.113.113 \
-    --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
-    --file omp-sandbox/main.containerfile \
-    omp-sandbox/
-```
-
 ## Run
 
 ```sh
-./run.sh            # interactive omp; caller's cwd mounted at /workspace
-./run.sh bash       # plain shell instead
-WORKSPACE=~/project ./run.sh
+./up.sh                     # one command from cold: images + proxy, then interactive omp
+./up.sh --build             # force a --no-cache sandbox rebuild (after cert rotation)
+./up.sh bash                # plain shell instead of omp
+WORKSPACE=~/project ./up.sh
 ```
+
+Idempotent: the proxy start no-ops when already running, images are built
+only when missing (or with `--build`). Pieces individually:
+`../credentials-proxy/build.sh` / `run.sh`, `./build.sh` / `./run.sh`.
 
 `run.sh` discovers the proxy's current address via `container inspect` and
 injects it as `OPENROUTER_PROXY_IP`; the sandbox entrypoint maps
-`openrouter.ai` there. Re-run `run.sh` whenever the proxy restarts (its IP
-changes); a running sandbox must be restarted too.
+`openrouter.ai` there. Re-run whenever the proxy restarts (its IP changes);
+a running sandbox must be restarted too.
 
 ## Verified
 
