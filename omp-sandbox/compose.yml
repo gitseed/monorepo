@@ -9,7 +9,6 @@ services:
     build:
       context: ./container
       dockerfile: proxy.containerfile
-    # Passed through from the infisical-injected environment.
     environment:
       - OPENROUTER_API_KEY
       - IAN_NEURAWATT_API_TOKEN
