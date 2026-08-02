@@ -9,7 +9,7 @@
 # there too. Invocation cwd is irrelevant.
 #
 # Topology and container plumbing live in omp-sandbox/compose.yml
-# (services, network, healthcheck, extra_hosts). What stays here is what
+# (services, network, aliases, healthcheck). What stays here is what
 # compose can't express:
 #   - always-build (layers cache makes it nearly free), with a daily
 #     --no-cache --pull for cache-reset hygiene and the cert-rotation
