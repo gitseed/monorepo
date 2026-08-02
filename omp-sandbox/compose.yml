@@ -21,6 +21,22 @@ services:
       - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
+    # The proxy must NEVER consume its own network aliases (docker's
+    # embedded DNS is network-wide and would resolve openrouter.ai and
+    # api.neuralwatt.com back to the proxy -- an infinite forwarding
+    # loop). Point its resolver straight at public DNS so upstream
+    # resolution bypasses 127.0.0.11 entirely.
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
+    # The sandbox finds the proxy by the REAL upstream hostnames: embedded
+    # DNS answers these aliases on the per-session project network, so no
+    # static IPs, no shared network namespace, no /etc/hosts overrides.
+    networks:
+      default:
+        aliases:
+          - openrouter.ai
+          - api.neuralwatt.com
     healthcheck:
       # Nothing credentialed is on the line: a bare TCP connect to the
       # TLS listener proves envoy is accepting. bash /dev/tcp because the
@@ -42,30 +58,18 @@ services:
     # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
     # up.sh assert the same answer explicitly.
     volumes:
-      # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
-      # up.sh assert the same answer explicitly.
       - "${GIT_PROJECT_DIR:-..}:/workspace"
-      # Static /etc/hosts (see container/sandbox-hosts): the daemon
-      # rejects --add-host together with network_mode:container, so the
-      # mapping comes from a bind mount instead.
-      - ./container/sandbox-hosts:/etc/hosts:ro
-    # The sandbox shares the proxy's network namespace (compose
-    # network_mode: service:<name>): envoy is right there on loopback,
-    # so openrouter.ai maps to a STATIC 127.0.0.1 -- no runtime IP
-    # plumbing. /etc/hosts remains per-container, so the proxy still
-    # resolves openrouter.ai to the REAL upstream.
-    network_mode: service:proxy
-    # In the shared-netns topology the docker default cap set is an
-    # exploit primitive: NET_RAW gives the sandbox AF_PACKET loopback
-    # sniffing AND raw-packet injection (forged DNS answers to envoy's
-    # resolver, matching the DNAT'd tuple), and NET_ADMIN is routing/
-    # nftables control the sandbox has no business with. Neither is
-    # needed for agent work.
+    # Two of the default capabilities are red-team footholds: NET_RAW
+    # gives AF_PACKET sniffing and raw-packet injection -- next to the
+    # proxy the sandbox can forge its resolver's DNS replies (the
+    # 2026-08-02 exfil raced envoy with IP_HDRINCL forgeries riding the
+    # DNAT conntrack tuple); NET_ADMIN is routing/firewall control it has
+    # no business near. Everything else stays so root workflows like
+    # dnf-install keep working.
     cap_drop:
     - NET_RAW
     - NET_ADMIN
-    security_opt:
-    - no-new-privileges:true
+    security_opt: [no-new-privileges:true]
 
 secrets:
   # Sandbox build secret comes from the environment that infisical

@@ -7,9 +7,9 @@ credentials inside**.
 ```mermaid
 flowchart LR
     subgraph sandbox[sandbox container]
-        omp[omp + any HTTPS client] -->|"/etc/hosts: openrouter.ai -> proxy IP"| t[TLS via local CA]
+        omp[omp + any HTTPS client] -->|"embedded DNS: openrouter.ai -> proxy container"| t[TLS via local CA]
     end
-    t -->|https://openrouter.ai ... but really the proxy| envoy
+    t -->|"dns alias on the session network"| envoy
     subgraph proxy[proxy container]
         envoy[envoy :443] -->|"credential_injector overwrites Authorization"| real[https://openrouter.ai real IP]
     end
@@ -18,18 +18,17 @@ flowchart LR
 - The sandbox carries only **dummy** key env vars
   (`dummy-replaced-by-proxy`) so omp considers the providers available
   without holding real credentials.
-- The sandbox shares the proxy's network namespace
-  (`network_mode: service:proxy`) and mounts a static
-  `container/sandbox-hosts` as `/etc/hosts`: each proxied upstream
-  (`openrouter.ai`, `api.neuralwatt.com`) maps to loopback with BOTH
-  an A record (`127.0.0.1`) and an AAAA counterpart (`::1`), hitting
-  envoy on loopback either way. An IPv4-only mapping leaks AAAA
-  lookups to real DNS, and a happy-eyeballs client (Bun) then races
-  past the proxy to the real upstream with the dummy key -- 401
-  `{"detail":"Invalid API key"}` is its (nondeterministic, dependent
-  on race order) signature. Envoy also binds `::` via
-  `additional_addresses`; a 0.0.0.0 bind does not cover IPv6 loopback.
-  Nothing about the mapping is computed at runtime.
+- The proxy advertises the upstream hostnames (`openrouter.ai`,
+  `api.neuralwatt.com`) as compose **network aliases**: docker's
+  embedded DNS resolves them to the proxy for every container on the
+  per-session project network. No static IPs, no /etc/hosts overrides,
+  no shared network namespace. Aliases are network-wide, so the proxy
+  exempts itself: its resolver points at public DNS (compose `dns:`),
+  bypassing embedded DNS and any alias loop.
+- AAAA queries for an alias get an empty answer from embedded DNS --
+  nothing leaks to real DNS, and Bun's happy eyeballs has no IPv6
+  route to race anyway. The old hosts-file design needed paired
+  `127.0.0.1`/`::1` pins for this; aliases make it structural.
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
@@ -37,11 +36,40 @@ flowchart LR
   to actual openrouter.ai, which in *that* container resolves to the real IP.
 - Bypass test: from inside the sandbox, hitting the real openrouter.ai IP
   directly with the in-sandbox key returns 401. There is nothing to leak.
+- Red-teamed 2026-08-02 (see red-team notes at the end of this section):
+  an earlier iteration that shared the proxy's network namespace and left
+  envoy's upstream TLS unverified leaked the real OpenRouter key. The
+  current controls, each independently chain-breaking:
+  - **envoy verifies upstream certificates** (CA bundle + exact-SAN match
+    per cluster in `container/envoy.yaml`): a hijacked resolution now
+    yields a refused handshake, not a credential handoff.
+  - **sandbox drops NET_RAW and NET_ADMIN**: no loopback/L2 sniffing or
+    packet forgery from inside, and no route/firewall manipulation --
+    everything else stays, so in-sandbox `dnf install` keeps working.
+  - **no shared network namespace**: the proxy's DNS never traverses a
+    wire the sandbox can read or write.
 
 (Runtime history: previously apple/container; dropped over its
 bridge-ifnet collision bug,
 [apple/container#2051](https://github.com/apple/container/issues/2051),
 which silently kills a NAT network's egress.)
+
+Red-team notes (2026-08-02, full credential exfiltration from inside the
+sandbox, pre-hardening): the sandbox shared the proxy's network
+namespace, so loopback was shared too. With default docker capabilities
+(`CAP_NET_RAW`), that made envoy's upstream DNS (getaddrinfo -> docker
+embedded DNS at 127.0.0.11, every ~5s LOGICAL_DNS refresh) fully
+observable AND forgeable: sniff the query on lo, answer it first with an
+injected raw packet -- reports must ride the victim flow's conntrack
+entry (forge the reply from the observed DNAT port, e.g. 52274, so NAT
+de-mangles it; a straight-from-:53 forgery is dropped before reaching
+the connected resolver socket). Envoy's `UpstreamTlsContext` carried
+only `sni:` -- no `validation_context` means NO upstream certificate
+verification -- so the poisoned cluster dialed an attacker-chosen IP
+(httpbin.org's ALB accepts arbitrary SNI and echoes request headers),
+the credential injector dutifully overwrote `Authorization` with the
+REAL key, and the echo body returned through the proxy to the sandbox.
+Fixes are the three controls listed above.
 
 ## Run
 
@@ -118,9 +146,11 @@ PROXY_IP = a running proxy container's address
 Controls (each must be 401):
 `curl https://openrouter.ai/api/v1/auth/key`
 `curl -H 'Authorization: Bearer wrong' -d '{"model":"kimi-k3","messages":[]}' -H 'Content-Type: application/json' https://api.neuralwatt.com/v1/chat/completions`
-For higher fidelity also exercise both address families (the A/AAAA
-loopback pairs are in `container/sandbox-hosts`):
-`curl -6 ...` against the proxied path through ::1
+Resolution-shape checks inside the sandbox: `getent hosts
+openrouter.ai` must return the proxy's container IP (never loopback),
+and `getent ahostsv6 openrouter.ai` must return EMPTY (embedded DNS
+answers NODATA for aliases -- a real AAAA here would reopen the old
+happy-eyeballs race past the proxy).
 
 ## Verified
 

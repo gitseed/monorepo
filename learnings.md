@@ -59,6 +59,27 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   alias on the proxy (aliases are network-wide: the proxy resolves
   openrouter.ai to ITSELF -- infinite forwarding loop, observed), and
   per-session static IPs (daemon refuses overlapping subnets).
+- 2026-08-02 SUPERSEDED: netns sharing + /etc/hosts mapping survived a
+  red-team for exactly one afternoon. From inside the sandbox
+  (CAP_NET_RAW, shared netns): sniff envoy's LOGICAL_DNS getaddrinfo
+  refreshes to 127.0.0.11 on the shared loopback, race them with forged
+  replies injected IP_HDRINCL -- the forgery MUST ride the victim flow's
+  conntrack (source your packet from the observed DNAT port, not 53, so
+  NAT de-mangles it into the connected resolver socket; straight
+  from-53 spoofs are silently dropped). Envoy's upstream TLS context had
+  no validation_context, i.e. NO upstream cert verification, so the
+  poisoned cluster dialed an attacker IP, got its cert-less handshake
+  accepted, and the credential injector attached the REAL
+  OPENROUTER_API_KEY -- returned to the sandbox via an echo service that
+  ignores Host (httpbin /headers behind an SNI-agnostic ALB). Fixes:
+  compose network aliases (openrouter.ai / api.neuralwatt.com) make
+  embedded DNS resolve the names to the proxy -- no IPs, no hosts file,
+  no netns sharing; the alias-loop rejection dissolved once the proxy's
+  resolver was overridden (compose `dns:` on the proxy service only);
+  sandbox drops NET_RAW+NET_ADMIN (narrow set: in-sandbox dnf-install
+  survives) + no-new-privileges; envoy clusters get a
+  validation_context (system CA bundle + exact SAN match). Each of the
+  three controls independently breaks the exfil chain.
 - Sessions are ISOLATED, one compose project each with its own
   generated default network. An earlier design had a shared `agent`
   network declared external; compose has no ownership model for

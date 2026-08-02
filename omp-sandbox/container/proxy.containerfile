@@ -14,8 +14,12 @@
 
 FROM docker.io/envoyproxy/envoy:v1.39-latest
 
+# ca-certificates: the system trust bundle that envoy.yaml's upstream
+# validation_context verifies upstream certs against -- without it the
+# pinning has nothing to anchor to (and envoy refuses to start, failing
+# closed).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libcap2-bin \
+    && apt-get install -y --no-install-recommends ca-certificates libcap2-bin \
     && setcap 'cap_net_bind_service=+ep' /usr/local/bin/envoy \
     && apt-get purge -y libcap2-bin \
     && rm -rf /var/lib/apt/lists/*

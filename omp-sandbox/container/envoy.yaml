@@ -9,29 +9,20 @@ static_resources:
       secret:
         environment_variable: IAN_NEURAWATT_API_TOKEN
 
-  # HTTPS listener (the only one): the sandbox container maps each
-  # upstream hostname (openrouter.ai, api.neuralwatt.com) to this
-  # container's address, so stock clients can use the real endpoint
-  # URLs. TLS terminates here with a certificate from infisical
-  # (tofu-issued, one SAN per mapped hostname; the sandbox trusts the
-  # CA). SNI selects the filter chain; each chain pins its own route
-  # and injected credential.
+  # HTTPS listener (the only one): compose gives the proxy network
+  # aliases for the upstream hostnames (openrouter.ai, api.neuralwatt.com),
+  # so sandbox getaddrinfo lands here via docker's embedded DNS while the
+  # proxy itself resolves the REAL upstreams through its overridden
+  # resolver (see compose.yml's dns: split). TLS terminates here with a
+  # certificate from infisical (tofu-issued, one SAN per mapped hostname;
+  # the sandbox trusts the CA). SNI selects the filter chain; each chain
+  # pins its own route and injected credential.
   listeners:
   - name: upstream_https
     address:
       socket_address:
         address: 0.0.0.0
         port_value: 443
-    # The sandbox's /etc/hosts maps our routed domains to BOTH loopbacks
-    # (127.0.0.1 A and ::1 AAAA); an AAAA-happy client (Bun's happy
-    # eyeballs) would otherwise race IPv6 and -- before this additional
-    # bind -- hit the *real* upstream with the dummy key: 401 from the
-    # genuine node, looking for all the world like a broken token.
-    additional_addresses:
-    - address:
-        socket_address:
-          address: "::"
-          port_value: 443
     # SNI-based filter chain selection requires the tls_inspector
     # listener filter; without it every handshake fails with
     # "no matching filter chain found".
@@ -193,8 +184,9 @@ static_resources:
         "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
     # The proxy itself must resolve upstream names to the REAL
-    # upstreams. Only the sandbox container gets the proxy address,
-    # via its /etc/hosts bind-mount (see ../compose.yml).
+    # upstreams: compose points its resolver at public DNS while the
+    # network aliases (which would loop back to this container) only
+    # exist in embedded DNS (see ../compose.yml).
     connect_timeout: 2s
     load_assignment:
       cluster_name: openrouter
@@ -210,6 +202,20 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: openrouter.ai
+        # An UpstreamTlsContext without validation_context performs NO
+        # upstream certificate verification: a hijacked DNS answer hands
+        # the injected credential to whatever answers. Verify the chain
+        # against the system bundle AND the exact hostname. (Red-teamed
+        # 2026-08-02: loopback DNS forgery + unverified upstream yielded
+        # the real OpenRouter key through a public echo service.)
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /etc/ssl/certs/ca-certificates.crt
+            match_typed_subject_alt_names:
+            - san_type: DNS
+              matcher:
+                exact: openrouter.ai
         # An UpstreamTlsContext WITHOUT validation_context performs NO
         # upstream certificate verification at all: no chain check, no
         # SAN check. Combined with DNS answers being forgeable from
@@ -250,6 +256,15 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: api.neuralwatt.com
+        # Same pinning as the openrouter cluster (see above).
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /etc/ssl/certs/ca-certificates.crt
+            match_typed_subject_alt_names:
+            - san_type: DNS
+              matcher:
+                exact: api.neuralwatt.com
         # Same as the openrouter cluster: verify chain + exact SAN, or
         # the injected neurawatt token is one DNS lie away from leaking.
         common_tls_context:

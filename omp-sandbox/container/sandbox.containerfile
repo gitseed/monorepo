@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # omp coding-agent sandbox. No real credentials inside: the only model
-# endpoint reachable with valid auth is https://openrouter.ai, which the
-# runner routes to the envoy proxy container (the sandbox shares the
-# proxy's network namespace and mounts sandbox-hosts as /etc/hosts, so
-# openrouter.ai is 127.0.0.1 = envoy on loopback), where envoy injects
-# the real API key.
+# endpoint reachable with valid auth is https://openrouter.ai, which
+# compose network aliases resolve to the envoy proxy container (docker
+# embedded DNS answers the aliased upstream hostnames with the proxy's
+# address on the per-session network), where envoy injects the real API
+# key after verifying the upstream's certificate.
 #
 # The CA cert arrives as a build secret straight from infisical; no disk
 # files, no committed material (from the omp-sandbox dir; usually just
