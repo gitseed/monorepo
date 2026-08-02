@@ -1,0 +1,7 @@
+# Static /etc/hosts for the sandbox. Mounted over the daemon-managed
+# file because --add-host is incompatible with network_mode:container.
+# The sandbox shares the proxy's network namespace, so 127.0.0.1 IS the
+# proxy -- that's the whole mapping trick; nothing is per-session.
+127.0.0.1 localhost
+::1 localhost ip6-localhost ip6-loopback
+127.0.0.1 openrouter.ai    # envoy on loopback (TLS-terminating proxy)

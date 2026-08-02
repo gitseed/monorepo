@@ -17,7 +17,6 @@
 #   - infisical: `infisical run -- docker compose ...` injects the
 #     secrets into compose's own env, which passes them into builds and
 #     the proxy container without touching disk
-#   - PROXY_IP discovery for the sandbox's openrouter.ai hosts entry
 #   - cleanup: per-session compose projects (omp-sandbox-$$) let
 #     `compose down` reap everything this session owns by label
 set -euo pipefail
@@ -73,22 +72,16 @@ echo "starting credentials proxy..."
 infisical run -- \
     "${COMPOSE[@]}" -p "$PROJECT" up -d --wait proxy
 
-# The sandbox maps openrouter.ai to this proxy via extra_hosts, which
-# compose needs at parse time -- hence discovery AFTER the proxy is up
-# (the session network is compose-generated, so take whichever
-# attachment the proxy has).
-PROXY_IP=$(docker inspect \
-    "$("${COMPOSE[@]}" -p "$PROJECT" ps --quiet proxy)" \
-    | jq -r '.[0].NetworkSettings.Networks | to_entries[0].value.IPAddress // empty')
-[[ -n $PROXY_IP ]] || { echo "up.sh: could not discover proxy IP" >&2; exit 1; }
-
 if [[ $# -eq 0 ]]; then
     set -- omp  # default command: interactive omp
 fi
 
 # -it only when a TTY exists (macOS harnesses and CI often lack one).
+# Note: compose compares the full service config (incl. the infisical-
+# injected env) between invocations — the run MUST also be under
+# infisical, else it recreates the proxy with an empty env mid-session.
 if [[ -t 0 && -t 1 ]]; then
-    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" -p "$PROJECT" run --rm sandbox "$@"
+    infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm sandbox "$@"
 else
-    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" -p "$PROJECT" run --rm -T sandbox "$@"
+    infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm -T sandbox "$@"
 fi

@@ -50,14 +50,15 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 - `-it` without a TTY fails here too ("the input device is not a TTY" vs
   apple/container's NSPOSIXErrorDomain Code=19); only pass `-it` when a
   TTY exists (`[[ -t 0 && -t 1 ]]`).
-- openrouter.ai must map to the proxy ONLY inside the sandbox
-  container. Verified rejections: (a) network alias on the proxy --
-  embedded-DNS aliases are network-wide, the PROXY then resolves
-  openrouter.ai to ITSELF (observed: getent inside the proxy returned
-  its own IP -- an infinite forwarding loop); (b) static IP per
-  session -- the docker daemon refuses networks with overlapping
-  subnets, so per-session static IPs need per-session subnets.
-  extra_hosts + runtime IP discovery in up.sh is what survives.
+- openrouter.ai must map to the proxy ONLY inside the sandbox. Settled
+  answer: sandbox shares the PROXY's network namespace (compose
+  `network_mode: service:proxy`), so extra_hosts statically pins
+  openrouter.ai:127.0.0.1 -- no runtime IP plumbing. Verified en route:
+  (a) a shared-netns peer keeps its OWN /etc/hosts and resolver and
+  reaches the sibling's listeners on 127.0.0.1; (b) rejections: network
+  alias on the proxy (aliases are network-wide: the proxy resolves
+  openrouter.ai to ITSELF -- infinite forwarding loop, observed), and
+  per-session static IPs (daemon refuses overlapping subnets).
 - Sessions are ISOLATED, one compose project each with its own
   generated default network. An earlier design had a shared `agent`
   network declared external; compose has no ownership model for
@@ -66,6 +67,15 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   refcounts merely masked it). Isolation is the clean fix: each
   session's teardown provably only touches its own network
   (verified with two concurrent sessions on disjoint /24s)
+- `network_mode: service:<name>` (netns sharing) gotchas, all observed:
+  the daemon REJECTS --add-host/extra_hosts with it (use a bind-mounted
+  /etc/hosts instead -- per-container still, getaddrinfo-honored),
+  REJECTS `hostname:` (the UTS namespace is shared too), and compose
+  reconciles dependency services across invocations by config hash --
+  `infisical run -- compose up` followed by bare `compose run`
+  RECREATES the proxy with emptied env mid-session. Every compose
+  command touching a credentialed service must run under `infisical
+  run --`.
 - compose (v5) details verified here: `up -d --wait` gates on
   healthchecks (healthy in ~5.7s -- one poll interval slower than the
   manual ~55ms nc loop, priced for declaring instead of scripting);

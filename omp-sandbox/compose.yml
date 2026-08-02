@@ -40,20 +40,20 @@ services:
     tty: true
     # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
     # up.sh assert the same answer explicitly.
-    volumes: ["${GIT_PROJECT_DIR:-..}:/workspace"]
-    # No explicit network: every session (compose project) gets its OWN
-    # default network, so concurrent sessions are isolated L2 islands;
-    # compose owns it and reaps it on down like everything else.
-    #
-    # openrouter.ai maps to the proxy via extra_hosts -- deliberately
-    # NOT a network alias on the proxy: embedded-DNS aliases are
-    # network-wide, so the PROXY would resolve openrouter.ai to itself
-    # (verified; that's an infinite forwarding loop). /etc/hosts is
-    # per-container, which is precisely the scoping needed here.
-    # PROXY_IP only exists after the proxy is up, so up.sh sets it at
-    # run time; the 127.0.0.1 default makes a hand-run sandbox without
-    # it fail loudly instead of reaching the REAL openrouter.ai.
-    extra_hosts: ["openrouter.ai:${PROXY_IP:-127.0.0.1}"]
+    volumes:
+      # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
+      # up.sh assert the same answer explicitly.
+      - "${GIT_PROJECT_DIR:-..}:/workspace"
+      # Static /etc/hosts (see container/sandbox-hosts): the daemon
+      # rejects --add-host together with network_mode:container, so the
+      # mapping comes from a bind mount instead.
+      - ./container/sandbox-hosts:/etc/hosts:ro
+    # The sandbox shares the proxy's network namespace (compose
+    # network_mode: service:<name>): envoy is right there on loopback,
+    # so openrouter.ai maps to a STATIC 127.0.0.1 -- no runtime IP
+    # plumbing. /etc/hosts remains per-container, so the proxy still
+    # resolves openrouter.ai to the REAL upstream.
+    network_mode: service:proxy
 
 secrets:
   # Sandbox build secret comes from the environment that infisical
