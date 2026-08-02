@@ -20,10 +20,11 @@ set -euo pipefail
 
 RESOLV=/etc/resolv.conf
 
-# BRE backslash-parens bugged here once (unopened group under every sed)
-# -- ERE, anchored, first-entry-only, so multiple ExtServers entries
-# parse deterministically.
-ext=$(sed -nE 's/^# ExtServers: \[host\(([0-9a-fA-F.:]+)\).*/\1/p' "$RESOLV" | head -1)
+# ERE (BRE backslash-parens capture bit us once), anchored,
+# first-entry-only. Two legal shapes: OrbStack wraps in host(...),
+# Docker Desktop writes bare IPs. Both forms observed in the wild.
+ext=$(sed -nE 's/^# ExtServers: \[(host\()?([0-9a-fA-F.:]+).*/\2/p' \
+    "$RESOLV" | head -1)
 if [[ -z "$ext" ]]; then
     echo "proxy-entrypoint: no '# ExtServers: [host(<ip>)]' comment in $RESOLV" >&2
     exit 1
