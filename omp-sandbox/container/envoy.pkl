@@ -3,8 +3,7 @@
 module envoy
 
 local class Upstream {
-  /// Triple duty: the SNI the sandbox sends, the host we rewrite and
-  /// resolve to, and the SAN pinned on the upstream connection.
+  /// The upstream we are credential injecting for.
   host: String
   /// Short name for the cluster, routes, and stats.
   name: String
@@ -45,8 +44,7 @@ local downstreamTls = new Dynamic {
   }
 }
 
-/// TRACE/TRACK echo request headers back, which after injection means
-/// echoing the real credential.
+/// TRACE/TRACK is bad news.
 local traceTrackRefusal = new Dynamic {
   match {
     prefix = "/"
@@ -94,8 +92,7 @@ local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
-/// Route and credential are selected together by SNI, so nothing can
-/// cross-inject the wrong key.
+/// Route and credential are selected together by SNI.
 local function filterChain(u: Upstream): Dynamic = new Dynamic {
   filter_chain_match { server_names { u.host } }
   transport_socket = downstreamTls
@@ -118,9 +115,7 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
                   route {
                     cluster = u.name
                     host_rewrite_literal = u.host
-                    // The 15s default bounds the whole response and kills
-                    // long LLM streams; stream_idle_timeout still reaps
-                    // hung ones.
+                    // stream_idle_timeout still reaps hung connections.
                     timeout = "0s"
                   }
                 }
@@ -138,9 +133,7 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
-/// Without a validation_context envoy verifies nothing, and a forged DNS
-/// answer hands the credential to whoever answers -- that was the
-/// 2026-08-02 exfil (see README).
+/// Strongly validate certificates.
 local function cluster(u: Upstream): Dynamic = new Dynamic {
   name = u.name
   type = "LOGICAL_DNS"
@@ -208,8 +201,7 @@ static_resources {
           port_value = 443
         }
       }
-      // Required for SNI chain selection; without it every handshake fails
-      // with "no matching filter chain found".
+      // Required for SNI chain selection.
       listener_filters {
         new {
           name = "envoy.filters.listener.tls_inspector"

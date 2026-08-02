@@ -1,10 +1,9 @@
 #!/bin/bash
-#   omp-sandbox/scripts/up.sh        # interactive omp
-#   omp-sandbox/scripts/up.sh bash   # plain shell instead
-#
-# /workspace always mounts the monorepo root, regardless of cwd.
+# omp-sandbox/scripts/up.sh      # interactive omp
+# omp-sandbox/scripts/up.sh bash # plain shell instead
 set -euo pipefail
 
+# omp workspace is the monorepo root directory
 GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$GIT_PROJECT_DIR"
 
@@ -24,13 +23,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The daily from-scratch rebuild is also how cert rotation gets picked up:
-# buildkit never cache-busts on build-secret contents.
+# Daily rebuild to update harness version.
 today=$(date +%Y-%m-%d)
 built_today() {
-    # Date-prefix match: .Created's nanoseconds defeat jq and bsd date both.
-    [[ $(docker image inspect "$1" 2>/dev/null \
-        | jq -r '(.[0].Created // empty)[0:10]') == "$today" ]]
+    [[ $(docker image inspect "$1" 2>/dev/null | jq -r '(.[0].Created // empty)[0:10]') == "$today" ]]
 }
 
 if built_today credentials-proxy; then
@@ -54,8 +50,7 @@ if [[ $# -eq 0 ]]; then
     set -- omp
 fi
 
-# The run must also be under infisical: compose diffs the full service
-# config between invocations and would recreate the proxy with an empty env.
+# The run must also be under infisical so envs are populated
 if [[ -t 0 && -t 1 ]]; then
     infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm sandbox "$@"
 else

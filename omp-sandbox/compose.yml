@@ -9,8 +9,6 @@ services:
       - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
-    # Never give this service aliases for the upstream hostnames: it would
-    # resolve them to itself and forward in a loop, uncaught at runtime.
     healthcheck:
       # The envoy image has no curl.
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/443'"]
@@ -18,7 +16,6 @@ services:
       timeout: 2s
       retries: 30
       start_period: 1s
-
   sandbox:
     image: omp-sandbox
     build:
@@ -27,20 +24,15 @@ services:
       secrets: [ca_cert]
     stdin_open: true
     tty: true
-    # Scoped to this container, unlike network-wide aliases. Legacy-flagged
-    # in the compose spec, but it's the only per-consumer alias mechanism.
     links:
       - "proxy:openrouter.ai"
       - "proxy:api.neuralwatt.com"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
-    # These two enabled the 2026-08-02 credential exfil (see README).
-    # Everything else stays so root workflows like dnf install keep working.
     cap_drop:
     - NET_RAW
     - NET_ADMIN
     security_opt: [no-new-privileges:true]
-
 secrets:
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
