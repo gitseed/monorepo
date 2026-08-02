@@ -23,8 +23,9 @@ flowchart LR
   embedded DNS resolves them to the proxy for every container on the
   per-session project network. No static IPs, no /etc/hosts overrides,
   no shared network namespace. Aliases are network-wide, so the proxy
-  exempts itself: its resolver points at public DNS (compose `dns:`),
-  bypassing embedded DNS and any alias loop.
+  exempts itself: its resolver points at the OrbStack host-forwarder
+  (compose `dns:`), bypassing embedded DNS and any alias loop while
+  keeping resolution on the host's stack -- no WARP interaction.
 - AAAA queries for an alias get an empty answer from embedded DNS --
   nothing leaks to real DNS, and Bun's happy eyeballs has no IPv6
   route to race anyway. The old hosts-file design needed paired

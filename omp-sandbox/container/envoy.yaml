@@ -184,9 +184,10 @@ static_resources:
         "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
     # The proxy itself must resolve upstream names to the REAL
-    # upstreams: compose points its resolver at public DNS while the
-    # network aliases (which would loop back to this container) only
-    # exist in embedded DNS (see ../compose.yml).
+    # upstreams: compose points its resolver at the OrbStack host-
+    # forwarder (0.250.250.200) while the network aliases (which would
+    # loop back to this container) only exist in embedded DNS
+    # (see ../compose.yml).
     connect_timeout: 2s
     load_assignment:
       cluster_name: openrouter
