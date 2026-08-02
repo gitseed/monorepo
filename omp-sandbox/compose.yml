@@ -1,8 +1,3 @@
-# The credential-injection boundary. up.sh runs each session as its own
-# compose project, so sessions are isolated and `compose down` cleans up
-# everything by label. Secrets come from wrapping compose in
-# `infisical run --` (see up.sh).
-
 services:
   proxy:
     image: credentials-proxy
@@ -14,12 +9,10 @@ services:
       - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
-    # Never give this service aliases for the upstream hostnames: it
-    # would resolve them to itself and forward in a loop, and nothing
-    # catches that at runtime. The sandbox's `links` below are the safe
-    # way to map them.
+    # Never give this service aliases for the upstream hostnames: it would
+    # resolve them to itself and forward in a loop, uncaught at runtime.
     healthcheck:
-      # Bare TCP connect proves envoy is accepting; the image has no curl.
+      # The envoy image has no curl.
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/443'"]
       interval: 1s
       timeout: 2s
@@ -34,24 +27,20 @@ services:
       secrets: [ca_cert]
     stdin_open: true
     tty: true
-    # Resolve the upstream hostnames to the proxy, inside this container
-    # only. `links` is legacy-flagged in the compose spec, but it's the
-    # only per-consumer alias mechanism.
+    # Scoped to this container, unlike network-wide aliases. Legacy-flagged
+    # in the compose spec, but it's the only per-consumer alias mechanism.
     links:
       - "proxy:openrouter.ai"
       - "proxy:api.neuralwatt.com"
-    # The monorepo root; up.sh sets GIT_PROJECT_DIR explicitly.
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
-    # NET_RAW and NET_ADMIN enabled the 2026-08-02 credential exfil (see
-    # README red-team notes). Everything else stays so root workflows
-    # like dnf install keep working.
+    # These two enabled the 2026-08-02 credential exfil (see README).
+    # Everything else stays so root workflows like dnf install keep working.
     cap_drop:
     - NET_RAW
     - NET_ADMIN
     security_opt: [no-new-privileges:true]
 
 secrets:
-  # From the infisical-injected environment; no cert files on disk.
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
