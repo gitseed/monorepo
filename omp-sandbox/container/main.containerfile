@@ -66,10 +66,6 @@ ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 
 # Pre-seeded config: skip the first-run wizard and pin the default model.
 # Auth itself comes from the proxy, not from anything here.
-RUN mkdir -p /root/.omp/agent && cat > /root/.omp/agent/config.yml <<'EOF'
-modelRoles:
-  default: openrouter/deepseek/deepseek-v4-flash-0731
-setupVersion: 1
-EOF
+COPY agent-config.yml /root/.omp/agent/config.yml
 
 CMD ["bash"]
