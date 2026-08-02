@@ -38,13 +38,11 @@ flowchart LR
                            # today), fresh per-session proxy in the background,
                            # foreground omp in your cwd
 ./scripts/up.sh bash       # plain shell instead
-WORKSPACE=~/project ./scripts/up.sh
 ```
 
-`/workspace` mounts the enclosing git repo of the directory you invoked
-from (your plain cwd if not inside any repo), so the agent always sees
-the whole project regardless of how deep you were. `WORKSPACE` overrides
-for unusual cases (e.g. a non-repo directory).
+`/workspace` always mounts the monorepo root, regardless of how deep
+under it you invoked the script -- the sandbox works on this one
+project.
 
 The script discovers the session proxy's address via `docker inspect` and
 maps `openrouter.ai` there with `--add-host` on the sandbox's `docker run`. Exiting the sandbox (or Ctrl-C) stops

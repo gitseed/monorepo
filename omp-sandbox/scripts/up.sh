@@ -1,14 +1,12 @@
 #!/bin/bash
 # The whole sandbox boundary in one command:
 #
-#   omp-sandbox/scripts/up.sh                  # build if stale, session proxy, interactive omp
-#   WORKSPACE=~/proj omp-sandbox/scripts/up.sh # different directory mounted at /workspace
-#   omp-sandbox/scripts/up.sh bash             # a plain shell instead of omp
+#   omp-sandbox/scripts/up.sh      # build if stale, session proxy, interactive omp
+#   omp-sandbox/scripts/up.sh bash # a plain shell instead of omp
 #
-# The default /workspace mount is the caller's ENCLOSING GIT REPO root
-# (falling back to the plain cwd when not inside any repo) -- a sandbox
-# always sees the whole project, not just the subdirectory it was
-# invoked from.
+# The sandbox exists to work on THIS monorepo: /workspace always mounts
+# the whole repo root, never a subdirectory and never an external
+# project. Invocation cwd is therefore irrelevant.
 #
 # Builds: each image is rebuilt only if it was NOT built today. This doubles
 # as the cert-rotation path: a tofu-applied rotation is picked up by the next
@@ -20,17 +18,12 @@
 # outlives a session, and no sandbox can ever point at a stale proxy address.
 set -euo pipefail
 
-# Must be resolved BEFORE cd-ing to the monorepo below: /workspace
-# mounts the caller's repo, wherever this script was invoked from.
-if [[ -z ${WORKSPACE:-} ]]; then
-    WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-fi
-
-# Build contexts are relative; anchor them to this script's repo so the
-# script works from ANY caller cwd (the sandbox is for working on
-# external repos too, not just the monorepo).
-ROOT=$(cd -- "$(dirname -- "$0")/../.." && pwd)
-cd "$ROOT"
+# GIT_PROJECT_DIR: the single repo that defines both the tooling (build
+# contexts are relative to it) and the agent's work (mounted into the
+# sandbox at /workspace). Anchored to this script's location, not the
+# caller's cwd, so subdir invocation mounts the full root.
+GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$GIT_PROJECT_DIR"
 
 NETWORK=agent
 PROXY_NAME=credentials-proxy-$$
@@ -118,6 +111,6 @@ docker run --rm -it \
     --name "$SANDBOX_NAME" \
     --network "$NETWORK" \
     --add-host "openrouter.ai:$PROXY_IP" \
-    --volume "$WORKSPACE:/workspace" \
+    --volume "$GIT_PROJECT_DIR:/workspace" \
     --workdir /workspace \
     omp-sandbox "$@"
