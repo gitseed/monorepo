@@ -21,27 +21,20 @@ services:
       - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
-    # The proxy must NEVER consume its own network aliases (docker's
-    # embedded DNS is network-wide and would resolve openrouter.ai and
-    # api.neuralwatt.com back to the proxy -- an infinite forwarding
-    # loop, now failing closed on SAN mismatch). Its resolver instead
-    # points at the OrbStack host-forwarder that embedded DNS itself
-    # fans out to, DISCOVERED AT RUNTIME by container/proxy-entrypoint.sh
-    # from the `# ExtServers: [host(<ip>)]` comment dockerd writes into
-    # the generated /etc/resolv.conf: same host resolver stack (WARP
-    # transparent), no hardcoded OrbStack-internal address. Discovery
-    # failure exits before envoy execs -- the healthcheck's bare TCP
-    # connect cannot catch dead DNS since envoy binds its listener
-    # regardless (wait_for_warm_on_init: false), so entrypoint failure
-    # is where "OrbStack moved the address" becomes loud.
-    # The sandbox finds the proxy by the REAL upstream hostnames: embedded
-    # DNS answers these aliases on the per-session project network, so no
-    # static IPs, no shared network namespace, no /etc/hosts overrides.
-    networks:
-      default:
-        aliases:
-          - openrouter.ai
-          - api.neuralwatt.com
+    # The proxy must NEVER resolve the upstream hostnames to itself --
+    # that loops envoy's forwarding back into its own listener (now
+    # failing closed on SAN mismatch). So the aliases mapping
+    # openrouter.ai / api.neuralwatt.com to this container live on the
+    # SANDBOX service as link-scoped `links:`, not here as network-wide
+    # `aliases:`: embedded DNS serves them only inside the linking
+    # container, and this container keeps the stock resolver view, where
+    # unknown names fan out to the host resolver stack (WARP
+    # transparent) -- no resolv.conf surgery, no hardcoded
+    # OrbStack-internal address. NOTHING catches the loop at runtime if
+    # network-wide `aliases:` reappear here: the healthcheck's bare TCP
+    # connect cannot see bad DNS (envoy binds its listener regardless,
+    # wait_for_warm_on_init: false), it just 503s -- keep the aliases on
+    # the sandbox.
     healthcheck:
       # Nothing credentialed is on the line: a bare TCP connect to the
       # TLS listener proves envoy is accepting. bash /dev/tcp because the
@@ -60,6 +53,18 @@ services:
       secrets: [ca_cert]
     stdin_open: true
     tty: true
+    # The sandbox finds the proxy by the REAL upstream hostnames, scoped
+    # to THIS container only: on user-defined networks, `links` are
+    # per-consumer DNS aliases, so the proxy's own resolver never sees
+    # them (network-wide `aliases:` would loop envoy into itself -- see
+    # the proxy comment above). No static IPs, no shared network
+    # namespace, no /etc/hosts overrides. `links` is legacy-flagged in
+    # the compose spec but is the only per-consumer alias mechanism;
+    # scoping verified under OrbStack 2026-08-02 (linked container
+    # resolves the proxy IP, everything else the public address).
+    links:
+      - "proxy:openrouter.ai"
+      - "proxy:api.neuralwatt.com"
     # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
     # up.sh assert the same answer explicitly.
     volumes:
