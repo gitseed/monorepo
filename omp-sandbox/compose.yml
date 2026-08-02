@@ -34,7 +34,7 @@ services:
     image: omp-sandbox
     build:
       context: ./container
-      dockerfile: main.containerfile
+      dockerfile: sandbox.containerfile
       secrets: [ca_cert]
     stdin_open: true
     tty: true
