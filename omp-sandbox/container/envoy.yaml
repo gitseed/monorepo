@@ -1,3 +1,4 @@
+# GENERATED FILE -- edit container/envoy.pkl, then run scripts/render-envoy.sh
 static_resources:
   secrets:
   - name: openrouter_api_key
@@ -8,172 +9,143 @@ static_resources:
     generic_secret:
       secret:
         environment_variable: IAN_NEURAWATT_API_TOKEN
-
-  # HTTPS listener (the only one): the sandbox service's link-scoped
-  # aliases (compose.yml `links:`) map the upstream hostnames
-  # (openrouter.ai, api.neuralwatt.com) to the proxy inside the sandbox
-  # container only, so sandbox getaddrinfo lands here via docker's
-  # embedded DNS while the proxy's own resolver still sees the REAL
-  # upstreams (see ../compose.yml). TLS terminates here with a
-  # certificate from infisical (tofu-issued, one SAN per mapped hostname;
-  # the sandbox trusts the CA). SNI selects the filter chain; each chain
-  # pins its own route and injected credential.
   listeners:
   - name: upstream_https
     address:
       socket_address:
         address: 0.0.0.0
         port_value: 443
-    # SNI-based filter chain selection requires the tls_inspector
-    # listener filter; without it every handshake fails with
-    # "no matching filter chain found".
     listener_filters:
     - name: envoy.filters.listener.tls_inspector
       typed_config:
-        "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
+        '@type': type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
     filter_chains:
     - filter_chain_match:
-        server_names: ["openrouter.ai"]
+        server_names:
+        - openrouter.ai
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
           common_tls_context:
             tls_certificates:
-            # PEMs come from infisical via the container's environment
-            # (see ../scripts/up.sh). No key material on disk, here or
-            # on the host.
             - certificate_chain:
                 environment_variable: CREDENTIALS_PROXY_SERVER_CERT
               private_key:
                 environment_variable: CREDENTIALS_PROXY_SERVER_KEY
+          '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
       filters:
       - name: envoy.filters.network.http_connection_manager
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: openrouter
           route_config:
             name: openrouter
             virtual_hosts:
             - name: openrouter
               domains:
-              - "openrouter.ai"
+              - openrouter.ai
               routes:
-              # TRACE is RFC-echo of request headers and TRACK is its
-              # IIS ancestor; with overwrite: true injection, a caller
-              # could ask the proxy to echo back the REAL injected
-              # credential inside the response body. Refuse both before
-              # any route runs. Non-standard verbs never belong here.
               - match:
-                  prefix: "/"
+                  prefix: /
                   headers:
-                  - name: ":method"
+                  - name: :method
                     string_match:
                       safe_regex:
-                        regex: "^(TRACE|TRACK)$"
+                        regex: ^(TRACE|TRACK)$
                 direct_response:
                   status: 405
                   body:
-                    inline_string: "method not allowed\n"
+                    inline_string: |
+                      method not allowed
               - match:
-                  prefix: "/"
+                  prefix: /
                 route:
                   cluster: openrouter
                   host_rewrite_literal: openrouter.ai
-                  # Envoy's route timeout (default 15s) bounds the ENTIRE
-                  # response; LLM streams routinely exceed it and get reset
-                  # mid-stream. 0s disables it; the HCM stream_idle_timeout
-                  # (default 5m) still reaps streams that stop moving bytes.
                   timeout: 0s
           access_log:
           - name: envoy.access_loggers.stdout
             typed_config:
-              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              '@type': type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
           http_filters:
           - name: envoy.filters.http.credential_injector
             typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
               overwrite: true
               credential:
                 name: envoy.http.injected_credentials.generic
                 typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
                   credential:
                     name: openrouter_api_key
                   header: Authorization
-                  header_value_prefix: "Bearer "
+                  header_value_prefix: 'Bearer '
+                  '@type': type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
+              '@type': type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
           - name: envoy.filters.http.router
             typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
+              '@type': type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
     - filter_chain_match:
-        server_names: ["api.neuralwatt.com"]
+        server_names:
+        - api.neuralwatt.com
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
           common_tls_context:
             tls_certificates:
             - certificate_chain:
                 environment_variable: CREDENTIALS_PROXY_SERVER_CERT
               private_key:
                 environment_variable: CREDENTIALS_PROXY_SERVER_KEY
+          '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
       filters:
       - name: envoy.filters.network.http_connection_manager
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: neuralwatt
           route_config:
             name: neuralwatt
             virtual_hosts:
             - name: neuralwatt
               domains:
-              - "api.neuralwatt.com"
+              - api.neuralwatt.com
               routes:
-              # Same as the openrouter vhost, verbatim: refuse echo-verb
-              # exfiltration of the injected header before routing.
               - match:
-                  prefix: "/"
+                  prefix: /
                   headers:
-                  - name: ":method"
+                  - name: :method
                     string_match:
                       safe_regex:
-                        regex: "^(TRACE|TRACK)$"
+                        regex: ^(TRACE|TRACK)$
                 direct_response:
                   status: 405
                   body:
-                    inline_string: "method not allowed\n"
+                    inline_string: |
+                      method not allowed
               - match:
-                  prefix: "/"
+                  prefix: /
                 route:
                   cluster: neuralwatt
                   host_rewrite_literal: api.neuralwatt.com
-                  # Same as the openrouter route: no total-response bound
-                  # on streaming completions.
                   timeout: 0s
           access_log:
           - name: envoy.access_loggers.stdout
             typed_config:
-              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              '@type': type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
           http_filters:
           - name: envoy.filters.http.credential_injector
             typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
               overwrite: true
               credential:
                 name: envoy.http.injected_credentials.generic
                 typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
                   credential:
                     name: ian_neurawatt_api_token
                   header: Authorization
-                  header_value_prefix: "Bearer "
+                  header_value_prefix: 'Bearer '
+                  '@type': type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
+              '@type': type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
           - name: envoy.filters.http.router
             typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
-
-
+              '@type': type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
   clusters:
   - name: openrouter
     type: LOGICAL_DNS
@@ -182,13 +154,8 @@ static_resources:
     typed_dns_resolver_config:
       name: envoy.network.dns_resolver.getaddrinfo
       typed_config:
-        "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
-    # The proxy itself resolves upstream names to the REAL upstreams
-    # through its stock embedded-DNS resolver: the aliases mapping these
-    # names to the proxy (which would loop back to this container) are
-    # link-scoped inside the sandbox container and invisible here
-    # (see ../compose.yml).
+        '@type': type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
     connect_timeout: 2s
     load_assignment:
       cluster_name: openrouter
@@ -202,14 +169,7 @@ static_resources:
     transport_socket:
       name: envoy.transport_sockets.tls
       typed_config:
-        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: openrouter.ai
-        # An UpstreamTlsContext without validation_context performs NO
-        # upstream certificate verification: a hijacked DNS answer hands
-        # the injected credential to whatever answers. Verify the chain
-        # against the system bundle AND the exact hostname. (Red-teamed
-        # 2026-08-02: loopback DNS forgery + unverified upstream yielded
-        # the real OpenRouter key through a public echo service.)
         common_tls_context:
           validation_context:
             trusted_ca:
@@ -218,22 +178,7 @@ static_resources:
             - san_type: DNS
               matcher:
                 exact: openrouter.ai
-        # An UpstreamTlsContext WITHOUT validation_context performs NO
-        # upstream certificate verification at all: no chain check, no
-        # SAN check. Combined with DNS answers being forgeable from
-        # inside the shared netns, any TLS endpoint could receive the
-        # injected credential (kill chain tested by a second agent from
-        # inside the sandbox). Chain against public CAs + exact SAN pins
-        # the real upstream regardless of what DNS says.
-        common_tls_context:
-          validation_context:
-            trusted_ca:
-              filename: /etc/ssl/certs/ca-certificates.crt
-            match_typed_subject_alt_names:
-            - san_type: DNS
-              matcher:
-                exact: openrouter.ai
-
+        '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
   - name: neuralwatt
     type: LOGICAL_DNS
     dns_lookup_family: V4_ONLY
@@ -241,8 +186,8 @@ static_resources:
     typed_dns_resolver_config:
       name: envoy.network.dns_resolver.getaddrinfo
       typed_config:
-        "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
+        '@type': type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
     connect_timeout: 2s
     load_assignment:
       cluster_name: neuralwatt
@@ -256,9 +201,7 @@ static_resources:
     transport_socket:
       name: envoy.transport_sockets.tls
       typed_config:
-        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: api.neuralwatt.com
-        # Same pinning as the openrouter cluster (see above).
         common_tls_context:
           validation_context:
             trusted_ca:
@@ -267,13 +210,4 @@ static_resources:
             - san_type: DNS
               matcher:
                 exact: api.neuralwatt.com
-        # Same as the openrouter cluster: verify chain + exact SAN, or
-        # the injected neurawatt token is one DNS lie away from leaking.
-        common_tls_context:
-          validation_context:
-            trusted_ca:
-              filename: /etc/ssl/certs/ca-certificates.crt
-            match_typed_subject_alt_names:
-            - san_type: DNS
-              matcher:
-                exact: api.neuralwatt.com
+        '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext

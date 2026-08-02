@@ -64,6 +64,11 @@ built_today() {
         | jq -r '(.[0].Created // empty)[0:10]') == "$today" ]]
 }
 
+# envoy.yaml is rendered from container/envoy.pkl on the host (no pkl
+# toolchain in the image); never build from a stale or hand-edited
+# artifact.
+omp-sandbox/scripts/render-envoy.sh --check
+
 if built_today credentials-proxy; then
     "${COMPOSE[@]}" -p "$PROJECT" build proxy
 else

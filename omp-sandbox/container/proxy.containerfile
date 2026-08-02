@@ -24,4 +24,7 @@ RUN apt-get update \
     && apt-get purge -y libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
 
+# envoy.yaml is GENERATED from envoy.pkl by ../scripts/render-envoy.sh
+# (up.sh refuses to build if it's stale). Rendering stays on the host
+# so this image's supply chain remains envoy + ca-certificates only.
 COPY --chmod=0444 envoy.yaml /etc/envoy/envoy.yaml
