@@ -1,29 +1,21 @@
-/// Credential-injection proxy config. Rendered to /etc/envoy/envoy.yaml
-/// during the proxy image build (see proxy.containerfile's render
-/// stage) -- this file is the only form of the config in the repo.
+/// Credential-injection proxy config, rendered to envoy.yaml during the
+/// image build (see proxy.containerfile).
 ///
-/// The whole config is one shape applied per upstream: an SNI-selected
-/// filter chain that terminates TLS with our infisical-issued cert and
-/// injects the real credential, plus a cluster that reaches the REAL
-/// upstream with chain verification and an exact SAN pin. Adding an
-/// upstream means adding one entry to `upstreams` below -- never
-/// copy-pasting a 90-line YAML block (which is how the duplicate-key
-/// merge artifacts this file replaced got in).
+/// One shape per upstream: an SNI-selected filter chain that terminates
+/// TLS and injects the credential, and a cluster that reaches the real
+/// upstream with an exact SAN pin. To add an upstream, add an entry to
+/// `upstreams`.
 module envoy
 
-/// One proxied upstream: the hostname the sandbox talks to, and the
-/// credential envoy injects on the way out.
 local class Upstream {
-  /// Real upstream hostname. Triple duty: the SNI the sandbox sends
-  /// (selects the filter chain), the host we rewrite/resolve to, and
-  /// the exact SAN pinned on the upstream connection.
+  /// Triple duty: the SNI the sandbox sends, the host we rewrite and
+  /// resolve to, and the SAN pinned on the upstream connection.
   host: String
-  /// Short name for the cluster, route config, vhost, and stat_prefix.
+  /// Short name for the cluster, routes, and stats.
   name: String
   /// generic_secret name holding the injected credential.
   secret: String
-  /// Environment variable the credential arrives in (via infisical;
-  /// never on disk).
+  /// Environment variable the credential arrives in.
   env: String
 }
 
@@ -42,11 +34,8 @@ local upstreams: Listing<Upstream> = new {
   }
 }
 
-/// Downstream TLS: terminate with the infisical-issued cert (tofu
-/// signs one SAN per mapped hostname; the sandbox trusts the CA).
-/// PEMs come from the container environment -- no key material on
-/// disk, here or on the host. Identical for every chain: the cert
-/// carries all the SANs.
+/// Terminate TLS with the tofu-issued cert (one SAN per hostname, so
+/// one cert covers every chain), straight from the environment.
 local downstreamTls = new Dynamic {
   name = "envoy.transport_sockets.tls"
   typed_config {
@@ -62,10 +51,8 @@ local downstreamTls = new Dynamic {
   }
 }
 
-/// TRACE is RFC-echo of request headers and TRACK is its IIS ancestor;
-/// with overwrite: true injection, a caller could ask the proxy to echo
-/// the REAL injected credential back inside the response body. Refuse
-/// both before any route runs. Non-standard verbs never belong here.
+/// TRACE/TRACK echo request headers back, which after injection would
+/// echo the real credential. Refuse them before any route runs.
 local traceTrackRefusal = new Dynamic {
   match {
     prefix = "/"
@@ -97,7 +84,7 @@ local routerFilter = new Dynamic {
 }
 
 /// Overwrite the sandbox's dummy Authorization header with the real
-/// credential from the env-backed secret.
+/// credential.
 local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
   name = "envoy.filters.http.credential_injector"
   typed_config {
@@ -115,9 +102,8 @@ local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
-/// One SNI-selected filter chain per upstream: a sealed unit of
-/// route + injected credential, so no routing mistake can
-/// cross-inject the wrong key.
+/// One chain per upstream: route and credential are selected together
+/// by SNI, so nothing can cross-inject the wrong key.
 local function filterChain(u: Upstream): Dynamic = new Dynamic {
   filter_chain_match { server_names { u.host } }
   transport_socket = downstreamTls
@@ -140,11 +126,9 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
                   route {
                     cluster = u.name
                     host_rewrite_literal = u.host
-                    // Envoy's route timeout (default 15s) bounds the
-                    // ENTIRE response; LLM streams routinely exceed it
-                    // and get reset mid-stream. 0s disables it; the HCM
-                    // stream_idle_timeout (default 5m) still reaps
-                    // streams that stop moving bytes.
+                    // The 15s default bounds the whole response and
+                    // kills long LLM streams; stream_idle_timeout still
+                    // reaps hung ones.
                     timeout = "0s"
                   }
                 }
@@ -162,17 +146,11 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
-/// The proxy resolves upstream names to the REAL upstreams through its
-/// stock embedded-DNS resolver: the aliases mapping these names to the
-/// proxy (which would loop back to this container) are link-scoped
-/// inside the sandbox container and invisible here (see ../compose.yml).
-///
-/// An UpstreamTlsContext without validation_context performs NO
-/// upstream certificate verification: a hijacked DNS answer hands the
-/// injected credential to whatever answers. Verify the chain against
-/// the system bundle AND the exact hostname. (Red-teamed 2026-08-02:
-/// loopback DNS forgery + unverified upstream yielded the real
-/// OpenRouter key through a public echo service.)
+/// Clusters resolve the REAL upstreams (the proxy-pointing aliases are
+/// link-scoped inside the sandbox; see ../compose.yml) and verify chain
+/// + exact SAN. Without validation_context envoy verifies NOTHING, and
+/// a forged DNS answer hands the credential to whoever answers -- that
+/// was the 2026-08-02 exfil (see README red-team notes).
 local function cluster(u: Upstream): Dynamic = new Dynamic {
   name = u.name
   type = "LOGICAL_DNS"
@@ -212,9 +190,7 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
       sni = u.host
       common_tls_context {
         validation_context {
-          // /etc/ssl/certs/ca-certificates.crt: the system bundle the
-          // containerfile installs; envoy refuses to start without it
-          // (failing closed).
+          // The system bundle the containerfile installs.
           trusted_ca { filename = "/etc/ssl/certs/ca-certificates.crt" }
           match_typed_subject_alt_names {
             new {
@@ -234,11 +210,8 @@ static_resources {
     generic_secret { secret { environment_variable = u.env } }
   })
 
-  // HTTPS listener (the only one): the sandbox service's link-scoped
-  // aliases (compose.yml `links:`) map the upstream hostnames to the
-  // proxy inside the sandbox container only, so sandbox getaddrinfo
-  // lands here via docker's embedded DNS while the proxy's own
-  // resolver still sees the real upstreams. SNI selects the chain.
+  // The only listener: sandbox traffic for the upstream hostnames lands
+  // here via the compose links; SNI selects the chain.
   listeners {
     new {
       name = "upstream_https"
@@ -248,9 +221,8 @@ static_resources {
           port_value = 443
         }
       }
-      // SNI-based filter chain selection requires the tls_inspector
-      // listener filter; without it every handshake fails with
-      // "no matching filter chain found".
+      // Required for SNI chain selection; without it every handshake
+      // fails with "no matching filter chain found".
       listener_filters {
         new {
           name = "envoy.filters.listener.tls_inspector"

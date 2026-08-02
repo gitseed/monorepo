@@ -1,12 +1,7 @@
-# The credential-injection boundary as one compose project. up.sh runs
-# each session under `-p omp-sandbox-$$` (per-session project name), so
-# concurrent sessions are fully isolated (per-project default network)
-# and `compose down` reaps everything a session owns by label -- no
-# name-based cleanup.
-#
-# Anything credentialed (run env, build secret) is threaded by up.sh via
-# `infisical run -- docker compose ...`: compose merely passes through
-# what that wrapper injects into its own environment.
+# The credential-injection boundary. up.sh runs each session as its own
+# compose project, so sessions are isolated and `compose down` cleans up
+# everything by label. Secrets come from wrapping compose in
+# `infisical run --` (see up.sh).
 
 services:
   proxy:
@@ -14,31 +9,18 @@ services:
     build:
       context: ./container
       dockerfile: proxy.containerfile
-    # Bare names: pass through from the (infisical-injected) environment
-    # of whichever compose command runs the service. Never persisted.
+    # Passed through from the infisical-injected environment.
     environment:
       - OPENROUTER_API_KEY
       - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
-    # The proxy must NEVER resolve the upstream hostnames to itself --
-    # that loops envoy's forwarding back into its own listener (now
-    # failing closed on SAN mismatch). So the aliases mapping
-    # openrouter.ai / api.neuralwatt.com to this container live on the
-    # SANDBOX service as link-scoped `links:`, not here as network-wide
-    # `aliases:`: embedded DNS serves them only inside the linking
-    # container, and this container keeps the stock resolver view, where
-    # unknown names fan out to the host resolver stack (WARP
-    # transparent) -- no resolv.conf surgery, no hardcoded
-    # OrbStack-internal address. NOTHING catches the loop at runtime if
-    # network-wide `aliases:` reappear here: the healthcheck's bare TCP
-    # connect cannot see bad DNS (envoy binds its listener regardless,
-    # wait_for_warm_on_init: false), it just 503s -- keep the aliases on
-    # the sandbox.
+    # Never give this service aliases for the upstream hostnames: it
+    # would resolve them to itself and forward in a loop, and nothing
+    # catches that at runtime. The sandbox's `links` below are the safe
+    # way to map them.
     healthcheck:
-      # Nothing credentialed is on the line: a bare TCP connect to the
-      # TLS listener proves envoy is accepting. bash /dev/tcp because the
-      # envoy image ships no curl/wget.
+      # Bare TCP connect proves envoy is accepting; the image has no curl.
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/443'"]
       interval: 1s
       timeout: 2s
@@ -53,36 +35,24 @@ services:
       secrets: [ca_cert]
     stdin_open: true
     tty: true
-    # The sandbox finds the proxy by the REAL upstream hostnames, scoped
-    # to THIS container only: on user-defined networks, `links` are
-    # per-consumer DNS aliases, so the proxy's own resolver never sees
-    # them (network-wide `aliases:` would loop envoy into itself -- see
-    # the proxy comment above). No static IPs, no shared network
-    # namespace, no /etc/hosts overrides. `links` is legacy-flagged in
-    # the compose spec but is the only per-consumer alias mechanism;
-    # scoping verified under OrbStack 2026-08-02 (linked container
-    # resolves the proxy IP, everything else the public address).
+    # Resolve the upstream hostnames to the proxy, inside this container
+    # only. `links` is legacy-flagged in the compose spec, but it's the
+    # only per-consumer alias mechanism.
     links:
       - "proxy:openrouter.ai"
       - "proxy:api.neuralwatt.com"
-    # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
-    # up.sh assert the same answer explicitly.
+    # The monorepo root; up.sh sets GIT_PROJECT_DIR explicitly.
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
-    # Two of the default capabilities are red-team footholds: NET_RAW
-    # gives AF_PACKET sniffing and raw-packet injection -- next to the
-    # proxy the sandbox can forge its resolver's DNS replies (the
-    # 2026-08-02 exfil raced envoy with IP_HDRINCL forgeries riding the
-    # DNAT conntrack tuple); NET_ADMIN is routing/firewall control it has
-    # no business near. Everything else stays so root workflows like
-    # dnf-install keep working.
+    # NET_RAW and NET_ADMIN enabled the 2026-08-02 credential exfil (see
+    # README red-team notes). Everything else stays so root workflows
+    # like dnf install keep working.
     cap_drop:
     - NET_RAW
     - NET_ADMIN
     security_opt: [no-new-privileges:true]
 
 secrets:
-  # Sandbox build secret comes from the environment that infisical
-  # injected into the compose CLI process; no cert files on disk.
+  # From the infisical-injected environment; no cert files on disk.
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT

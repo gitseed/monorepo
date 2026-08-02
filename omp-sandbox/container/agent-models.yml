@@ -1,8 +1,5 @@
-# Provider definitions for the sandbox image. Modelled on the host's
-# ~/.omp/agent/models.yml, except the apiKey is a placeholder: every
-# request to api.neuralwatt.com passes through the credential-injecting
-# proxy (see ../compose.yml), which overwrites the header. Never paste a
-# real key here.
+# Providers for the sandbox. The apiKey is a placeholder -- the proxy
+# overwrites the header. Never paste a real key here.
 providers:
   neurawatt:
     baseUrl: https://api.neuralwatt.com/v1/
