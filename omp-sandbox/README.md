@@ -113,3 +113,6 @@ Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
   present).
 - `Authorization: Bearer bogus` through the proxy → 200 (overwrite works).
 - Direct to the real endpoint with the sandbox's key → 401.
+- The neurawatt chain likewise turns a bogus Bearer into 200 from the
+  real api.neuralwatt.com (`/v1/models`), under SNI dispatch alongside
+  openrouter on the same listener.
