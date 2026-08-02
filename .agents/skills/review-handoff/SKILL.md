@@ -26,6 +26,12 @@ tradeoffs BEFORE building any converts N implementation cycles into
 one decision cycle. Reviewers keep you in scope only if they see the
 plan before the code.
 
+In an interactive session, USE the harness's option picker (`ask`
+tool with 2-5 options, tradeoffs in the description, recommended
+index set) rather than prose. It exists; serially implementing
+candidates because nobody surfaced the choice is an available-failure
+pattern, not a structural one.
+
 ## Challenged? Experiment first, rationale after
 
 Assume the challenge is right until the deciding experiment says
