@@ -4,5 +4,11 @@
 # proxy -- that's the whole mapping trick; nothing is per-session.
 127.0.0.1 localhost
 ::1 localhost ip6-localhost ip6-loopback
+# A AND AAAA: an IPv4-only mapping leaves AAAA lookups leaking to real
+# DNS, and a happy-eyeballs client (Bun) then races past the proxy to
+# the real upstream with the dummy key. Envoy must also bind :: (see
+# envoy.yaml's additional_addresses).
 127.0.0.1 openrouter.ai       # envoy on loopback (TLS-terminating proxy)
+::1 openrouter.ai             # IPv6 loopback: the AAAA answer
 127.0.0.1 api.neuralwatt.com  # same; SNI picks the filter chain
+::1 api.neuralwatt.com        # same; the AAAA answer

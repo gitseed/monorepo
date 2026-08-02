@@ -135,8 +135,26 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   checked the new yml files. `command -v omp` in the built image would
   have caught it.
 - jq's fromdateiso8601 rejects docker's .Created (nanoseconds + TZ
-  offset). For daily staleness, compare the local date prefix
-  `.Created[0:10]` -- simpler and line-free of parsing failures.
+  offset); match the local date prefix `.Created[0:10]` instead.
+  And an actual mechanism lesson: prefer ALWAYS building (layers cache
+  makes it nearly free) over staleness guards. The daily `--no-cache`
+  bust is the only worthwhile guard -- anything finer-grained
+  (mtime-vs-image comparisons, e.g.) is sophistication that tends to
+  miss a case. It failed a real scenario here (post-merge same-day
+  runs reused pre-merge binaries).
+- /etc/hosts entries without an `::1` (AAAA) counterpart leak AAAA
+  lookups to real DNS. Bun's happy-eyeball races then route some
+  requests PAST a loopback-terminating proxy to the real upstream with a
+  dummy key -- the signature was the real upstream's 401
+  `{"detail":"Invalid API key"}` breaking only intermittently as races
+  flipped. Fix pairs: `127.0.0.1 domain` AND `::1 domain` in hosts, PLUS
+  `additional_addresses: [::]` on the envoy listener (a 0.0.0.0 bind
+  does not cover IPv6 loopback).
+- `/v1/models` is UNAUTHENTICATED on openai-compat gateways (verified on
+  api.neuralwatt.com: 200 with no Authorization). Verification with
+  curl on the models endpoint alone proves nothing about injection;
+  use POST /v1/chat/completions with a deliberately bogus Bearer --
+  200-through-proxy + 401-direct is the real proof.
 - SNI-based filter chain selection (multiple filter_chains with
   filter_chain_match.server_names) REQUIRES the tls_inspector listener
   filter; otherwise envoy never parses the ClientHello and every
