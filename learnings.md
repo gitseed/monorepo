@@ -76,17 +76,14 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   slow startup -- deadline tuning won't fix that flavor of flake.
 - `docker run --name X` when X exists errors like apple/container did
   (leftover stopped containers block reuse); `docker rm -f` is the fix.
-- Labels/naming: session-scoped containers named `<purpose>-<host pid>`
-  lets a later run detect and reap orphans (a SIGKILLed harness can't run
-  its own EXIT trap). With compose the same job falls out: per-session
-  projects (`-p omp-sandbox-$$`) label everything they own
-  (containers AND networks), and `compose -p <stale> down
-  --remove-orphans` reaps it all. up.sh runs such a reaper at startup.
-  Enumerate orphans via raw label filters on `docker ps -a` and
-  `docker network ls` -- NOT `docker compose ls`, which silently
-  OMITS crashed/zombie sessions from its own live tracking.
-  Conservative on host pid reuse: reaping fires only when the pid
-  embedded in the project name is dead.
+- Labels/naming: per-session compose projects (`-p omp-sandbox-$$`)
+  label everything a session owns (containers AND networks), so manual
+  cleanup of a crashed session is one command: `compose -p
+  omp-sandbox-<pid> down --remove-orphans`. Deliberately not automated
+  into up.sh -- orphan cleanup after a SIGKILL is the human's call, not
+  the next run's side effect. Debugging note: enumerate projects via
+  raw label filters on `docker ps -a` / `docker network ls`, NOT
+  `docker compose ls`, which silently omits zombie sessions.
 - `hub stop` / SIGTERM on `docker run -d`-started orchestrators does NOT
   guarantee in-container traps run; EXIT traps only fire on graceful
   foreground exit. Design for reaping, not relying on traps alone.

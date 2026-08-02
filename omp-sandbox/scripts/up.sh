@@ -48,27 +48,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Orphan reaping: traps never run when the harness SIGKILLs us, so a
-# proxy (holding injected credentials) can outlive its session. Project
-# names carry the owning pid; if that pid is dead, the session is dead --
-# any later run reaps it by label. Conservative on pid reuse: a LIVE pid
-# that isn't ours just means we skip reaping that project. Enumeration
-# goes off raw docker labels, NOT `docker compose ls` (which
-# silently drops sessions whose containers aren't in its own live view).
-for proj in $( {
-        docker ps -a --filter "label=com.docker.compose.project" \
-            --format '{{.Label "com.docker.compose.project"}}'
-        docker network ls --filter "label=com.docker.compose.project" \
-            --format '{{.Label "com.docker.compose.project"}}'
-    } | sort -u ); do
-    [[ $proj == omp-sandbox-* ]] || continue
-    [[ $proj == "$PROJECT" ]] && continue
-    if ! kill -0 "${proj##*-}" 2>/dev/null; then
-        echo "reaping orphaned session $proj"
-        "${COMPOSE[@]}" -p "$proj" down --remove-orphans
-    fi
-done
-
 stale() {
     # true when the image is missing or was not built today (UTC)
     local created
