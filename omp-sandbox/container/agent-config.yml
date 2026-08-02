@@ -1,6 +1,6 @@
 modelRoles:
   default: openrouter/deepseek/deepseek-v4-flash-0731
-defaultThinkingLevel: max
+defaultThinkingLevel: high
 hideThinkingBlock: true
 memory:
   backend: local
