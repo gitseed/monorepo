@@ -25,6 +25,7 @@ FROM quay.io/fedora/fedora:42
 RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         ca-certificates \
         curl \
+        diffutils \
         findutils \
         git \
         gzip \
