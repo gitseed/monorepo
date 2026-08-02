@@ -61,10 +61,11 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
 # every provider request, so point it at the same CA explicitly.
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem
 
-# Placeholder: makes the openrouter provider "available" inside the sandbox.
-# envoy's credential injector overwrites the header with the real key, so
-# this value is never usable on its own.
+# Placeholders: make omp consider these providers "available" inside the
+# sandbox. envoy's credential injector overwrites each Authorization header
+# with the real key on the way out, so these values are never usable alone.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
+ENV IAN_NEURAWATT_API_TOKEN=dummy-replaced-by-proxy
 
 # Pre-seeded config: skip the first-run wizard and pin the default model.
 # Auth itself comes from the proxy, not from anything here.

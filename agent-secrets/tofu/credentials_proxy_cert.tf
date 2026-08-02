@@ -38,7 +38,9 @@ resource "tls_private_key" "credentials_proxy_server" {
 
 resource "tls_cert_request" "credentials_proxy_server" {
   private_key_pem = tls_private_key.credentials_proxy_server.private_key_pem
-  dns_names       = ["openrouter.ai"]
+  # SANs: one per hostname the sandbox maps onto the proxy (envoy picks the
+  # filter chain by SNI). The sandbox trusts the CA, not the SAN list.
+  dns_names = ["openrouter.ai", "api.neuralwatt.com"]
 
   subject {
     common_name = "openrouter.ai"

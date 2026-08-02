@@ -18,6 +18,7 @@ services:
     # of whichever compose command runs the service. Never persisted.
     environment:
       - OPENROUTER_API_KEY
+      - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
     healthcheck:
