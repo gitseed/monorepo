@@ -1,49 +1,35 @@
 ---
 name: review-handoff
-description: Cold adversarial self-review before every delivery; alternatives-as-proposals instead of serial implementations; experiment-before-defense when challenged. Load before presenting work for review or answering a review challenge.
+description: Cold self-review before delivery; surface design alternatives as a choice before implementing any; when challenged, run the deciding experiment before defending. Load before presenting work or answering a review challenge.
 ---
 
 # Review handoff
 
 ## Cold adversarial pass (blocking)
 
-Before delivering, re-read your own full diff as the reviewer will.
-Standing questions:
+Re-read the full diff as the reviewer will. Look for: the thing
+they'd flag first; comments scrubbed while their code survived; stale
+cross-references; batch-edit typos; changes that do nothing. Minutes
+here save a full round-trip per catch.
 
-- What would the reviewer flag first?
-- Any comment scrubbed while the code it describes survived?
-- Stale cross-references (script names, paths, mechanisms removed)?
-- Mangled prose from batch edits (missing spaces, wrong subjects)?
-- Anything committed that does nothing?
+## Surface alternatives; don't serial-implement
 
-One pass of this self-review costs minutes; a reviewer flagging the
-same thing costs a full round-trip.
-
-## Propose alternatives, don't serial-implement
-
-When multiple designs are visible, one message laying out options and
-tradeoffs BEFORE building any converts N implementation cycles into
-one decision cycle. Reviewers keep you in scope only if they see the
-plan before the code.
-
-In an interactive session, USE the harness's option picker (`ask`
-tool with 2-5 options, tradeoffs in the description, recommended
-index set) rather than prose. It exists; serially implementing
-candidates because nobody surfaced the choice is an available-failure
-pattern, not a structural one.
+When several designs are visible, present the options with tradeoffs
+before building any — one decision cycle instead of N implementation
+cycles. In an interactive session, use the option-picker tool (2-5
+options, tradeoffs in descriptions, a recommendation) rather than
+prose.
 
 ## Challenged? Experiment first, rationale after
 
-Assume the challenge is right until the deciding experiment says
-otherwise. The thread's tell: a commit documenting "why current
-behavior stays" landed minutes before the better design replaced it. Write
-down the rationale once the evidence has one.
+Treat the challenge as right until the deciding experiment says
+otherwise. This thread's tell: a "why current behavior stays" commit
+landed minutes before the better design replaced it. Write the
+rationale once the evidence exists.
 
-## Verification contract
+## "Done" contract
 
-Before saying "done":
-
-1. Run the exact acceptance scenario, quote relevant output.
-2. State explicitly which of the user's quoted phrases each output
-   addresses.
-3. `git status` clean; no accidental staging, no unintended content.
+1. Run the exact acceptance scenario; quote the output.
+2. Map each of the reviewer's quoted asks to the output that
+   satisfies it.
+3. `git status` clean — nothing unstaged, nothing accidental.

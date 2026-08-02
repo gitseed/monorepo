@@ -1,35 +1,39 @@
 ---
 name: evidence-discipline
-description: Diagnose against ground truth before fixing, and make the test harness match reality before trusting its output. Load before bug fixes, debugging sessions, and anytime about to "explain" a failure.
+description: Prove a diagnosis against ground truth before fixing, and make the test harness match reality before trusting its output. Load before bug fixes, debugging, or explaining any failure.
 ---
 
 # Evidence discipline
 
-The two most expensive failures in this repo's history both violated
-this skill: a fix was built for a phantom zombie-process threat, and
-the fix's correct behavior was then misread as further breakage — all
-on evidence a broken harness fabricated.
+This repo's costliest failure chain: a broken harness fabricated
+evidence of a threat, a fix was built for the phantom, and the fix's
+correct behavior was read as more breakage. Each rule breaks that
+chain at one link.
 
 ## Diagnose before fixing
 
-Before writing ANY fix, spend the thirty seconds proving the problem
-exists as diagnosed:
+Prove the problem exists as diagnosed before writing any fix — `ps`,
+`docker ps`, an actual repro, whatever ground truth the claim has.
+When results contradict your model, measure before editing. A phantom
+fix costs three cycles: building it, watching it "fail", removing it.
 
-- `ps`, `docker ps`, `/proc`, an actual reproduction — whatever the
-  ground truth for the claim is.
-- A fix for a phantom costs three cycles: building it, watching it
-  "fail" (correctly — there was nothing to find), removing it.
-- When results contradict the model, measure before editing.
+## Match the harness to reality
 
-## Harness realism
+A wrong-shaped test fabricates evidence — worse than none, because
+decisions load on it.
 
-A wrong-shaped test fabricates evidence, which is worse than no
-evidence because every downstream decision loads on it.
-
-- `kill -9` on a wrapper's pid tells you nothing about the wrapped
-  process — target the actual process of interest.
-- Interactive flows MUST be tested interactively (pty-capable runner,
-  not `nohup &` from a headless shell). A script failing headless
-  proves only that it needs a TTY.
-- Before trusting "X is broken", ask: does this harness exercise the
+- Signal the actual process of interest; `kill -9` on a wrapper says
+  nothing about the child.
+- Test interactive flows interactively (pty), never `nohup &` from a
+  headless shell — failing headless only proves it needs a TTY.
+- Before believing "X is broken": does the harness exercise the
   production path? If not, fix the harness first.
+- Don't build a bespoke harness just to test a helper — that's a
+  second, unbudgeted project. Test the real path once.
+
+## Notice when the loop stops converging
+
+The same area churning three cycles in a row means a premise is
+wrong, not the code. Stop, discard conclusions drawn this session,
+and re-derive from ground truth — or hand the question to a cold
+session that isn't carrying the premise.
