@@ -1,6 +1,6 @@
 ---
 name: authority-first-design
-description: Load before writing any plumbing — a script that rehydrates one value into a file, a gitignore entry protecting a generated secret, a mount widened to reach one path, a run-this-before-that instruction. Anchor the mechanism on the value's authoritative owner and the consumer's native intake path; a bridge survives only with its forcing constraint named beside it.
+description: Load before writing plumbing — a script rehydrating one value into a file, a gitignore'd secret, a mount widened for one path, a "run X first" step. Anchor on the value's owner and the consumer's native intake path instead.
 ---
 
 # Authority-first design
