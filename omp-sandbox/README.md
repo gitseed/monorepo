@@ -132,3 +132,10 @@ loopback pairs are in `container/sandbox-hosts`):
   /v1/chat/completions (NOT /v1/models, which is unauthenticated
   upstream and proves nothing) -- over both IPv4 and IPv6 (forced
   ::1), under SNI dispatch alongside openrouter on the same listener.
+- Adversarial replay of agent-reported kill chain, from the sandbox:
+  fake `openrouter.ai` (self-signed cert, docker network alias
+  answering envoy's resolver) gets envoy `503 upstream connect error`,
+  the attacker's log shows zero requests, and the injected `Bearer`
+  never egresses. Underlying primitives are also gone: no NET_RAW/
+  NET_ADMIN (sniff + raw-packet injection) and `no-new-privileges` on
+  the sandbox service.
