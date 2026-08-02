@@ -25,16 +25,3 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=0444 envoy.yaml /etc/envoy/envoy.yaml
-
-# DNS guard runs before envoy: assert the upstream hostnames resolve
-# away from this container (their proxy-pointing aliases are link-scoped
-# inside the sandbox, never network-wide) and fail the container (not
-# the request) otherwise -- the compose healthcheck is a bare TCP
-# connect and envoy binds its listener before DNS health is known, so
-# the die-early path is the only loud one.
-COPY --chmod=0755 proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
-ENTRYPOINT ["/usr/local/bin/proxy-entrypoint.sh"]
-# Wikipedia rule of Dockerfile footguns: setting ENTRYPOINT resets CMD to
-# null, so re-declare the base image's command explicitly or the exec
-# chain hands nothing to envoy (observed: su-exec usage banner, exit 1).
-CMD ["envoy", "-c", "/etc/envoy/envoy.yaml"]

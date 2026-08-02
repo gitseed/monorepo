@@ -30,12 +30,11 @@ services:
     # container, and this container keeps the stock resolver view, where
     # unknown names fan out to the host resolver stack (WARP
     # transparent) -- no resolv.conf surgery, no hardcoded
-    # OrbStack-internal address. container/proxy-entrypoint.sh still
-    # asserts the loop is absent and exits before envoy execs if a
-    # network-wide alias ever reappears: the healthcheck's bare TCP
-    # connect cannot catch bad DNS since envoy binds its listener
-    # regardless (wait_for_warm_on_init: false), so the entrypoint is
-    # the only loud failure path.
+    # OrbStack-internal address. NOTHING catches the loop at runtime if
+    # network-wide `aliases:` reappear here: the healthcheck's bare TCP
+    # connect cannot see bad DNS (envoy binds its listener regardless,
+    # wait_for_warm_on_init: false), it just 503s -- keep the aliases on
+    # the sandbox.
     healthcheck:
       # Nothing credentialed is on the line: a bare TCP connect to the
       # TLS listener proves envoy is accepting. bash /dev/tcp because the
