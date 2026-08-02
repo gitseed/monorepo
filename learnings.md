@@ -108,6 +108,18 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 
 ## envoy
 
+- `RouteAction.timeout` defaults to **15s** and bounds the ENTIRE upstream
+  response, not time-to-first-byte. A streaming completion that runs
+  longer gets envoy-reset mid-flight (clients see "socket connection
+  closed unexpectedly"); against a 1-slot-concurrency upstream the aborted
+  stream keeps the slot and retries cascade into 429s. Set `timeout: 0s`
+  per route; the HCM `stream_idle_timeout` default (5m of no bytes) still
+  reaps truly hung streams. General lesson: quick curl validation of a
+  streaming proxy proves nothing about stream duration -- check the
+  default timers. (Fable diagnosed this one.)
+- Separately verified: client-side aborts DO propagate, both direct and
+  through envoy, and the upstream slot frees within ~3s of an abort via
+  the proxy. Abort-lag was never the problem.
 - `secrets:` is NOT a valid bootstrap top-level field. Static credential
   material for the credential_injector's `Generic` type lives under
   `static_resources.secrets` with `generic_secret.secret.
