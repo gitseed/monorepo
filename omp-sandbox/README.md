@@ -46,8 +46,9 @@ which silently kills a NAT network's egress.)
 ## Run
 
 ```sh
-./scripts/up.sh            # one command, from cold: builds (only when not built
-                           # today), fresh per-session proxy in the background,
+./scripts/up.sh            # one command, from cold: always build (layer
+                           # cache, plus --no-cache once a day), fresh
+                           # per-session proxy in the background,
                            # foreground omp in /workspace
 ./scripts/up.sh bash       # plain shell instead
 ```
@@ -82,9 +83,9 @@ endpoint URLs unchanged.
 
 Certificates are tofu-managed
 (`../agent-secrets/tofu/credentials_proxy_cert.tf`) and stored in
-infisical. Rotate by applying the tofu: the next `up.sh` run rebuilds
-the sandbox image (daily staleness) and starts a proxy with the new
-material. Same-day rotation additionally needs
+infisical. Rotate by applying the tofu: the next `up.sh` run starts a proxy with the
+new material, and the next day's daily `--no-cache` build bakes the new
+CA into the sandbox image. Same-day rotation additionally needs
 `docker image rm omp-sandbox` (buildkit never busts its cache on
 build-secret contents).
 

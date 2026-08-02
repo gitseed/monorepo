@@ -1,7 +1,7 @@
 #!/bin/bash
 # The whole sandbox boundary in one command:
 #
-#   omp-sandbox/scripts/up.sh      # build if stale, session proxy, interactive omp
+# omp-sandbox/scripts/up.sh      # build (cached, --no-cache daily), session proxy, interactive omp
 #   omp-sandbox/scripts/up.sh bash # a plain shell instead of omp
 #
 # The sandbox works on THIS monorepo: /workspace always mounts the whole
@@ -11,9 +11,10 @@
 # Topology and container plumbing live in omp-sandbox/compose.yml
 # (services, network, healthcheck, extra_hosts). What stays here is what
 # compose can't express:
-#   - daily-staleness rebuilds (cert-rotation absorption; secret mounts
-#     never bust the build cache, so same-day builds must not be
-#     trusted after a rotation -- wait a day or rm the image)
+#   - always-build (layers cache makes it nearly free), with a daily
+#     --no-cache --pull for cache-reset hygiene and the cert-rotation
+#     path (a tofu-applied cert rotation lands in the next day's run;
+#     buildkit never busts its cache on build-secret contents)
 #   - infisical: `infisical run -- docker compose ...` injects the
 #     secrets into compose's own env, which passes them into builds and
 #     the proxy container without touching disk
@@ -47,32 +48,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-stale() {
-    # true when the image is missing, was not built today, or is older
-    # than any file in its build context. Daily granularity misses the
-    # classic footgun: build in the morning, merge a config change at
-    # noon — an AAAA-ipv4-calendared check says "fresh" while baked
-    # envoy.yaml no longer matches the repo.
-    local name="$1" context="$2" created epoch newest
-    created=$(docker image inspect "$name" 2>/dev/null \
-        | jq -r '(.[0].Created // empty)')
-    [[ -z $created || ${created:0:10} != "$(date +%Y-%m-%d)" ]] && return 0
-    # docker emits nanoseconds + a colonated TZ offset; bsd date's %z
-    # wants neither, so normalize before the round-trip.
-    epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' \
-        "$(printf '%s' "$created" | sed -E 's/\.[0-9]+//' -e 's/([+-][0-9]{2}):([0-9]{2})$/\1\2/')" \
-        +%s 2>/dev/null || echo 0)
-    newest=$(find "$context" -type f -not -name '.*' -exec stat -f %m {} + | sort -n | tail -1)
-    [[ -n $newest && $newest -gt "$epoch" ]]
+# Builds are cheap with the layer cache, so always build: whatever
+# changed since the last build gets picked up immediately. The only
+# decision is when to trust the cache: rerun from scratch (--no-cache
+# --pull) once per day, which doubles as the cert-rotation path (a
+# tofu-applied rotation is picked up by the next day's run; cache
+# invalidation on build-secret contents is not a thing).
+today=$(date +%Y-%m-%d)
+built_today() {
+    # true when $1 was built today (local time -- this whole setup is
+    # laptop-scheduled, not UTC-scheduled). docker's .Created carries
+    # nanoseconds + a TZ offset that jq/fromdateiso8601 and bsd date
+    # round-trips both choke on; the date prefix match sidesteps both.
+    [[ $(docker image inspect "$1" 2>/dev/null \
+        | jq -r '(.[0].Created // empty)[0:10]') == "$today" ]]
 }
 
-if stale credentials-proxy omp-sandbox/container; then
-    echo "building credentials-proxy (stale)..."
+if built_today credentials-proxy; then
+    "${COMPOSE[@]}" -p "$PROJECT" build proxy
+else
     "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
 fi
 
-if stale omp-sandbox omp-sandbox/container; then
-    echo "building omp-sandbox (stale)..."
+# The sandbox build consumes the CA via a buildkit secret from infisical.
+if built_today omp-sandbox; then
+    infisical run -- "${COMPOSE[@]}" -p "$PROJECT" build sandbox
+else
     infisical run -- \
         "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache sandbox
 fi

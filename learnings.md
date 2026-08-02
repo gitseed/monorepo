@@ -135,10 +135,13 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   checked the new yml files. `command -v omp` in the built image would
   have caught it.
 - jq's fromdateiso8601 rejects docker's .Created (nanoseconds + TZ
-  offset). For daily staleness, compare the local date prefix
-  `.Created[0:10]` -- simpler and line-free of parsing failures. Also:
-  daily staleness misses same-day merges; staleness must also rebuild
-  when build-context mtimes exceed the image's .Created.
+  offset); match the local date prefix `.Created[0:10]` instead.
+  And an actual mechanism lesson: prefer ALWAYS building (layers cache
+  makes it nearly free) over staleness guards. The daily `--no-cache`
+  bust is the only worthwhile guard -- anything finer-grained
+  (mtime-vs-image comparisons, e.g.) is sophistication that tends to
+  miss a case. It failed a real scenario here (post-merge same-day
+  runs reused pre-merge binaries).
 - /etc/hosts entries without an `::1` (AAAA) counterpart leak AAAA
   lookups to real DNS. Bun's happy-eyeball races then route some
   requests PAST a loopback-terminating proxy to the real upstream with a
