@@ -22,6 +22,16 @@ static_resources:
       socket_address:
         address: 0.0.0.0
         port_value: 443
+    # The sandbox's /etc/hosts maps our routed domains to BOTH loopbacks
+    # (127.0.0.1 A and ::1 AAAA); an AAAA-happy client (Bun's happy
+    # eyeballs) would otherwise race IPv6 and -- before this additional
+    # bind -- hit the *real* upstream with the dummy key: 401 from the
+    # genuine node, looking for all the world like a broken token.
+    additional_addresses:
+    - address:
+        socket_address:
+          address: "::"
+          port_value: 443
     # SNI-based filter chain selection requires the tls_inspector
     # listener filter; without it every handshake fails with
     # "no matching filter chain found".

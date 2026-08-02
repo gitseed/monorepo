@@ -21,9 +21,15 @@ flowchart LR
 - The sandbox shares the proxy's network namespace
   (`network_mode: service:proxy`) and mounts a static
   `container/sandbox-hosts` as `/etc/hosts`: each proxied upstream
-  (`openrouter.ai`, `api.neuralwatt.com`) is just `127.0.0.1` in
-  there, hitting envoy on loopback. Nothing about the mapping is
-  computed at runtime.
+  (`openrouter.ai`, `api.neuralwatt.com`) maps to loopback with BOTH
+  an A record (`127.0.0.1`) and an AAAA counterpart (`::1`), hitting
+  envoy on loopback either way. An IPv4-only mapping leaks AAAA
+  lookups to real DNS, and a happy-eyeballs client (Bun) then races
+  past the proxy to the real upstream with the dummy key -- 401
+  `{"detail":"Invalid API key"}` is its (nondeterministic, dependent
+  on race order) signature. Envoy also binds `::` via
+  `additional_addresses`; a 0.0.0.0 bind does not cover IPv6 loopback.
+  Nothing about the mapping is computed at runtime.
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
@@ -99,13 +105,21 @@ PROXY_IP = a running proxy container's address
       -H 'Authorization: wrong' https://openrouter.ai/api/v1/auth/key
 
     # The neurawatt chain is the same shape: bogus header, SNI decides
-    # which credential gets injected. -> 200 if the injected token is set
+    # which credential gets injected. Use chat_completions -- /v1/models
+    # is unauthenticated upstream, so a models 200 proves nothing. -> 200
     curl --fail-with-body --silent --show-error \
       --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT --plain) \
       --resolve api.neuralwatt.com:443:PROXY_IP \
-      -H 'Authorization: wrong' https://api.neuralwatt.com/v1/models
+      -H 'Authorization: wrong' -H 'Content-Type: application/json' \
+      -d '{"model":"kimi-k3","messages":[{"role":"user","content":"hi"}]}' \
+      https://api.neuralwatt.com/v1/chat/completions
 
-Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
+Controls (each must be 401):
+`curl https://openrouter.ai/api/v1/auth/key`
+`curl -H 'Authorization: Bearer wrong' -d '{"model":"kimi-k3","messages":[]}' -H 'Content-Type: application/json' https://api.neuralwatt.com/v1/chat/completions`
+For higher fidelity also exercise both address families (the A/AAAA
+loopback pairs are in `container/sandbox-hosts`):
+`curl -6 ...` against the proxied path through ::1
 
 ## Verified
 
@@ -113,6 +127,7 @@ Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
   present).
 - `Authorization: Bearer bogus` through the proxy → 200 (overwrite works).
 - Direct to the real endpoint with the sandbox's key → 401.
-- The neurawatt chain likewise turns a bogus Bearer into 200 from the
-  real api.neuralwatt.com (`/v1/models`), under SNI dispatch alongside
-  openrouter on the same listener.
+- The neurawatt chain turns a bogus Bearer into 200 on POST
+  /v1/chat/completions (NOT /v1/models, which is unauthenticated
+  upstream and proves nothing) -- over both IPv4 and IPv6 (forced
+  ::1), under SNI dispatch alongside openrouter on the same listener.

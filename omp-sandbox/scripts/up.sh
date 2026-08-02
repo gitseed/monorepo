@@ -48,24 +48,31 @@ cleanup() {
 trap cleanup EXIT
 
 stale() {
-    # true when the image is missing or was not built today (local time
-    # -- this whole setup is laptop-scheduled, not UTC-scheduled).
-    # docker's .Created carries nanoseconds + a TZ offset, which jq's
-    # fromdateiso8601/bsd date round-trip both choke on; docker emits
-    # the offset in local time anyway, so compare the date prefix.
-    local created
-    created=$(docker image inspect "$1" 2>/dev/null \
-        | jq -r '(.[0].Created // empty)[0:10]')
-    [[ -z $created || $created != "$(date +%Y-%m-%d)" ]]
+    # true when the image is missing, was not built today, or is older
+    # than any file in its build context. Daily granularity misses the
+    # classic footgun: build in the morning, merge a config change at
+    # noon — an AAAA-ipv4-calendared check says "fresh" while baked
+    # envoy.yaml no longer matches the repo.
+    local name="$1" context="$2" created epoch newest
+    created=$(docker image inspect "$name" 2>/dev/null \
+        | jq -r '(.[0].Created // empty)')
+    [[ -z $created || ${created:0:10} != "$(date +%Y-%m-%d)" ]] && return 0
+    # docker emits nanoseconds + a colonated TZ offset; bsd date's %z
+    # wants neither, so normalize before the round-trip.
+    epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' \
+        "$(printf '%s' "$created" | sed -E 's/\.[0-9]+//' -e 's/([+-][0-9]{2}):([0-9]{2})$/\1\2/')" \
+        +%s 2>/dev/null || echo 0)
+    newest=$(find "$context" -type f -not -name '.*' -exec stat -f %m {} + | sort -n | tail -1)
+    [[ -n $newest && $newest -gt "$epoch" ]]
 }
 
-if stale credentials-proxy; then
-    echo "building credentials-proxy (not built today)..."
+if stale credentials-proxy omp-sandbox/container; then
+    echo "building credentials-proxy (stale)..."
     "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
 fi
 
-if stale omp-sandbox; then
-    echo "building omp-sandbox (not built today)..."
+if stale omp-sandbox omp-sandbox/container; then
+    echo "building omp-sandbox (stale)..."
     infisical run -- \
         "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache sandbox
 fi
