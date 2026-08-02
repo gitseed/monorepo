@@ -5,20 +5,33 @@ static_resources:
       secret:
         environment_variable: OPENROUTER_API_KEY
 
+  # HTTPS listener (the only one): the sandbox container resolves
+  # openrouter.ai to this container's address, so stock clients can use
+  # the real https://openrouter.ai endpoint. TLS terminates here with a
+  # certificate from infisical (tofu-issued; the sandbox trusts its CA).
   listeners:
-  # Plain-HTTP debug listener: proves credential injection without any
-  # TLS/CA plumbing. NOT published to the host; reach it at the proxy
-  # container's own IP (OrbStack routes those directly to/from the Mac)
-  # or via docker exec -- see the Quick checks section of ../README.md.
-  - name: openrouter_http
+  - name: openrouter_https
     address:
       socket_address:
         address: 0.0.0.0
-        port_value: 10000
+        port_value: 443
     filter_chains:
-    - filters:
+    - transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            # PEMs come from infisical via the container's environment
+            # (see ../scripts/up.sh). No key material on disk, here or
+            # on the host.
+            - certificate_chain:
+                environment_variable: CREDENTIALS_PROXY_SERVER_CERT
+              private_key:
+                environment_variable: CREDENTIALS_PROXY_SERVER_KEY
+      filters:
       - name: envoy.filters.network.http_connection_manager
-        typed_config: &openrouter_hcm
+        typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: openrouter
           route_config:
@@ -54,32 +67,7 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
-  # HTTPS listener: the sandbox container resolves openrouter.ai to this
-  # container's address, so omp can use the stock https://openrouter.ai
-  # endpoint. TLS terminates here with a certificate from infisical
-  # (tofu-issued; the sandbox trusts its CA).
-  - name: openrouter_https
-    address:
-      socket_address:
-        address: 0.0.0.0
-        port_value: 443
-    filter_chains:
-    - transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-          common_tls_context:
-            tls_certificates:
-            # PEMs come from infisical via the container's environment
-            # (see ../scripts/up.sh). No key material on disk, here or
-            # on the host.
-            - certificate_chain:
-                environment_variable: CREDENTIALS_PROXY_SERVER_CERT
-              private_key:
-                environment_variable: CREDENTIALS_PROXY_SERVER_KEY
-      filters:
-      - name: envoy.filters.network.http_connection_manager
-        typed_config: *openrouter_hcm
+
 
   clusters:
   - name: openrouter

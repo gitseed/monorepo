@@ -62,14 +62,10 @@ of the boundary. The key arrives via `infisical run` and only ever
 exists in the proxy container's environment -- never in the sandbox,
 never on disk.
 
-Listeners, both injecting the same credential (`overwrite: true`):
-
-- `127.0.0.1:10000` (plain HTTP, intra-container) -- debugging via
-  `docker exec` or from the host at the proxy's own IP (OrbStack routes
-  container IPs from the Mac).
-- `:443` (TLS, cert for openrouter.ai) -- the sandbox resolves
-  openrouter.ai to this container's address, so stock clients use the
-  real https://openrouter.ai endpoint unchanged.
+One listener, `:443` (TLS, cert for openrouter.ai), injecting the
+credential with `overwrite: true`: the sandbox resolves openrouter.ai
+to this container's address, so stock clients use the real
+https://openrouter.ai endpoint unchanged.
 
 Certificates are tofu-managed
 (`../agent-secrets/tofu/credentials_proxy_cert.tf`) and stored in
@@ -88,11 +84,8 @@ For a long-lived debug proxy (out-of-session):
 PROXY_IP = a running proxy container's address
 (`docker compose ps` + `docker inspect`).
 
-    # plain-HTTP listener; injected key turns a bogus header into a 200
-    curl --fail-with-body --silent --show-error \
-      -H 'Authorization: wrong' http://PROXY_IP:10000/api/v1/auth/key
-
-    # TLS listener, exactly as the sandbox sees it
+    # TLS listener, exactly as the sandbox sees it: a bogus Authorization
+    # header is overwritten with the real key -> 200
     curl --fail-with-body --silent --show-error \
       --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT --plain) \
       --resolve openrouter.ai:443:PROXY_IP \
