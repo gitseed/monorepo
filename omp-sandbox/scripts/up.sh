@@ -5,6 +5,11 @@
 #   WORKSPACE=~/proj omp-sandbox/scripts/up.sh # different directory mounted at /workspace
 #   omp-sandbox/scripts/up.sh bash             # a plain shell instead of omp
 #
+# The default /workspace mount is the caller's ENCLOSING GIT REPO root
+# (falling back to the plain cwd when not inside any repo) -- a sandbox
+# always sees the whole project, not just the subdirectory it was
+# invoked from.
+#
 # Builds: each image is rebuilt only if it was NOT built today. This doubles
 # as the cert-rotation path: a tofu-applied rotation is picked up by the next
 # run (secret mounts never bust the build cache, so same-day builds must not
@@ -15,13 +20,16 @@
 # outlives a session, and no sandbox can ever point at a stale proxy address.
 set -euo pipefail
 
-CALLER_CWD=$PWD
-# Must run from inside the monorepo (uses git rev-parse so aliases work from
-# any subdirectory).
-ROOT=$(git rev-parse --show-toplevel) || {
-    echo "up.sh: must be run from inside the monorepo" >&2
-    exit 1
-}
+# Must be resolved BEFORE cd-ing to the monorepo below: /workspace
+# mounts the caller's repo, wherever this script was invoked from.
+if [[ -z ${WORKSPACE:-} ]]; then
+    WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+fi
+
+# Build contexts are relative; anchor them to this script's repo so the
+# script works from ANY caller cwd (the sandbox is for working on
+# external repos too, not just the monorepo).
+ROOT=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 
 NETWORK=agent
@@ -102,7 +110,6 @@ until [[ $(docker inspect "$PROXY_NAME" 2>/dev/null \
     sleep 0.5
 done
 
-WORKSPACE="${WORKSPACE:-$CALLER_CWD}"
 if [[ $# -eq 0 ]]; then
     set -- omp  # default command: interactive omp
 fi
