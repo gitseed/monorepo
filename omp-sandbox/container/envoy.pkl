@@ -1,8 +1,6 @@
-/// Credential-injection proxy config -- SOURCE OF TRUTH for envoy.yaml.
-///
-/// Edit this file, then run scripts/render-envoy.sh to regenerate
-/// container/envoy.yaml (the artifact the containerfile COPYs). up.sh
-/// refuses to build if the rendered file is stale or hand-edited.
+/// Credential-injection proxy config. Rendered to /etc/envoy/envoy.yaml
+/// during the proxy image build (see proxy.containerfile's render
+/// stage) -- this file is the only form of the config in the repo.
 ///
 /// The whole config is one shape applied per upstream: an SNI-selected
 /// filter chain that terminates TLS with our infisical-issued cert and
