@@ -10,6 +10,25 @@ that took 32 rounds of human feedback between initial delivery and
 merge. Every rule below consumed at least one review cycle. Apply them
 BEFORE delivery, not after.
 
+## 0a. Diagnose before fixing — with ground truth
+
+Before writing ANY fix, spend thirty seconds proving the problem exists
+as diagnosed: `ps`, `docker ps`, an actual reproduction. A fix for a
+phantom costs three cycles: building it, watching it "fail" (correctly
+not finding the phantom), then removing it. This was the thread's most
+expensive failure: a hallucinated zombie-process threat produced a
+reaper whose correct behavior was then misread as more breakage —
+two wrong fixes deep.
+
+## 0b. The test harness must match reality
+
+A wrong-shaped test fabricates evidence: `kill -9` on a wrapper pid
+frees nothing; headless-testing an interactive script tests nothing.
+False evidence is worse than no evidence because every downstream
+decision loads on it. Before trusting a result, verify the harness
+exercises the same path production does (harness pty for TTY-requiring
+flows; correct pid-of-interest for lifecycle tests).
+
 ## 1. Docs before probes
 
 Probing tells you what happens; documentation tells you what's
@@ -70,15 +89,36 @@ Each of these consumed a whole review cycle:
 - No verification theater: test the real path once. A harness built
   to test a helper is a second project you didn't budget for.
 
-## 7. Record tested-and-rejected paths
+## 7. Challenged? Experiment first, rationale after
+
+When a reviewer challenges a design, assume the challenge might be right
+and run the deciding experiment BEFORE writing a defense. The thread's
+tell: a commit documenting "why the current design stays" landed sixteen
+minutes before the better design replaced it. Write down the answer once
+the evidence has one.
+
+## 8. Record tested-and-rejected paths
 
 When a simpler design gets evaluated and rejected, write the rejection
 AND its evidence into the repo's learnings/notes. Otherwise the next
 session (or model) repeats the experiment. Folklore without evidence
 is undecidable.
 
-## Verification contract for review-heavy work
+## 9. Propose, don't serial-implement
 
-Before saying "done": run the exact acceptance command, quote the
-output, and state explicitly which of the user's quoted phrases the
-output addresses. If you can't point at it, it's not done.
+When a design has visible alternatives, one message laying out options
+and tradeoffs BEFORE building any of them converts N implementation
+cycles into one decision cycle. The reviewer can only keep you in
+scope if they see the plan before the code.
+
+## Verification contract for review-heavy work (blocking, not advisory)
+
+Before saying "done":
+
+1. Cold-read your own full diff as the reviewer will: "what would they
+   flag?" Stale comments, comment-scrubbed-but-code-survives, mangled
+   commit messages, silent no-op commits — all one-pass catchable,
+   all full-round-trip if not caught.
+2. Run the exact acceptance command, quote the output, and state
+   explicitly which of the user's quoted phrases the output addresses.
+   If you can't point at it, it's not done.
