@@ -1,19 +1,16 @@
 # omp-sandbox
 
-The omp coding agent in an [OrbStack](https://orbstack.dev) (docker CLI)
-sandbox with **no leakable credentials inside**.
-
-(Previously apple/container; dropped over its bridge-ifnet collision bug,
-[apple/container#2051](https://github.com/apple/container/issues/2051),
-which silently kills a NAT network's egress.)
+The omp coding agent in an [OrbStack](https://orbstack.dev) (docker)
+sandbox behind a credential-injecting envoy proxy, with **no leakable
+credentials inside**.
 
 ```mermaid
 flowchart LR
-    subgraph sandbox[omp-sandbox container]
+    subgraph sandbox[sandbox container]
         omp[omp + any HTTPS client] -->|"/etc/hosts: openrouter.ai -> proxy IP"| t[TLS via local CA]
     end
     t -->|https://openrouter.ai ... but really the proxy| envoy
-    subgraph proxy[credentials-proxy container]
+    subgraph proxy[proxy container]
         envoy[envoy :443] -->|"credential_injector overwrites Authorization"| real[https://openrouter.ai real IP]
     end
 ```
@@ -21,8 +18,7 @@ flowchart LR
 - The sandbox carries only a **dummy** `OPENROUTER_API_KEY`
   (`dummy-replaced-by-proxy`) so omp considers the provider available.
 - The sandbox resolves `openrouter.ai` to the **proxy container's** address
-  (`/etc/hosts`, mapped at container-create time with
-  `--add-host openrouter.ai:PROXY_IP`).
+  (`/etc/hosts`, via the sandbox's `extra_hosts` at container-create time).
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
@@ -31,12 +27,17 @@ flowchart LR
 - Bypass test: from inside the sandbox, hitting the real openrouter.ai IP
   directly with the in-sandbox key returns 401. There is nothing to leak.
 
+(Runtime history: previously apple/container; dropped over its
+bridge-ifnet collision bug,
+[apple/container#2051](https://github.com/apple/container/issues/2051),
+which silently kills a NAT network's egress.)
+
 ## Run
 
 ```sh
 ./scripts/up.sh            # one command, from cold: builds (only when not built
                            # today), fresh per-session proxy in the background,
-                           # foreground omp in your cwd
+                           # foreground omp in /workspace
 ./scripts/up.sh bash       # plain shell instead
 ```
 
@@ -45,7 +46,7 @@ under it you invoked the script -- the sandbox works on this one
 project.
 
 Service definitions, the network, and the proxy healthcheck live in
-`../compose.yml`; up.sh runs each session as its own compose project
+`compose.yml`; up.sh runs each session as its own compose project
 (`omp-sandbox-<pid>`), injects secrets through `infisical run --`, waits
 for the proxy's healthcheck, discovers its address, and maps
 `openrouter.ai` there via the sandbox's `extra_hosts`. Exiting the
@@ -53,9 +54,51 @@ sandbox (or Ctrl-C) triggers a trap that runs `compose down` --
 everything the session created is reaped by label, so no
 credential-bearing process outlives a session.
 
-Cert rotation is absorbed by the daily staleness rebuild; same-day rotation
-needs `docker image rm omp-sandbox` (buildkit never busts its cache on
+## The proxy service
+
+Envoy with the credential-injector filter: callers authenticate with
+anything (or nothing); the real OpenRouter key is attached on this side
+of the boundary. The key arrives via `infisical run` and only ever
+exists in the proxy container's environment -- never in the sandbox,
+never on disk.
+
+Listeners, both injecting the same credential (`overwrite: true`):
+
+- `127.0.0.1:10000` (plain HTTP, intra-container) -- debugging via
+  `docker exec` or from the host at the proxy's own IP (OrbStack routes
+  container IPs from the Mac).
+- `:443` (TLS, cert for openrouter.ai) -- the sandbox resolves
+  openrouter.ai to this container's address, so stock clients use the
+  real https://openrouter.ai endpoint unchanged.
+
+Certificates are tofu-managed
+(`../agent-secrets/tofu/credentials_proxy_cert.tf`) and stored in
+infisical. Rotate by applying the tofu: the next `up.sh` run rebuilds
+the sandbox image (daily staleness) and starts a proxy with the new
+material. Same-day rotation additionally needs
+`docker image rm omp-sandbox` (buildkit never busts its cache on
 build-secret contents).
+
+For a long-lived debug proxy (out-of-session):
+
+    infisical run -- docker compose -p debug-proxy up -d proxy
+
+## Quick checks
+
+PROXY_IP = a running proxy container's address
+(`docker compose ps` + `docker inspect`).
+
+    # plain-HTTP listener; injected key turns a bogus header into a 200
+    curl --fail-with-body --silent --show-error \
+      -H 'Authorization: wrong' http://PROXY_IP:10000/api/v1/auth/key
+
+    # TLS listener, exactly as the sandbox sees it
+    curl --fail-with-body --silent --show-error \
+      --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT --plain) \
+      --resolve openrouter.ai:443:PROXY_IP \
+      -H 'Authorization: wrong' https://openrouter.ai/api/v1/auth/key
+
+Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
 
 ## Verified
 

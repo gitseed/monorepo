@@ -8,7 +8,7 @@
 # repo root (compose.yml's relative bind), and the build contexts live
 # there too. Invocation cwd is irrelevant.
 #
-# Topology and container plumbing live in compose.yml at the repo root
+# Topology and container plumbing live in omp-sandbox/compose.yml
 # (services, network, healthcheck, extra_hosts). What stays here is what
 # compose can't express:
 #   - daily-staleness rebuilds (cert-rotation absorption; secret mounts
@@ -28,7 +28,8 @@ set -euo pipefail
 GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$GIT_PROJECT_DIR"
 
-COMPOSE=(docker compose -p omp-sandbox-$$)
+COMPOSE=(docker compose -p omp-sandbox-$$ -f omp-sandbox/compose.yml)
+export GIT_PROJECT_DIR
 
 cleanup() {
     local status=$?

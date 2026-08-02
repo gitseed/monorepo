@@ -11,8 +11,8 @@ services:
   proxy:
     image: credentials-proxy
     build:
-      context: credentials-proxy/container
-      dockerfile: main.containerfile
+      context: ./container
+      dockerfile: proxy.containerfile
     # Bare names: pass through from the (infisical-injected) environment
     # of whichever compose command runs the service. Never persisted.
     environment:
@@ -33,13 +33,14 @@ services:
   sandbox:
     image: omp-sandbox
     build:
-      context: omp-sandbox/container
+      context: ./container
       dockerfile: main.containerfile
       secrets: [ca_cert]
     stdin_open: true
     tty: true
-    # Relative to this file's directory = the monorepo root.
-    volumes: ["./:/workspace"]
+    # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
+    # up.sh assert the same answer explicitly.
+    volumes: ["${GIT_PROJECT_DIR:-..}:/workspace"]
     # PROXY_IP exists only after the proxy is up; up.sh sets it when
     # running the sandbox. 127.0.0.1 is an unreachable placeholder so a
     # hand-run `docker compose run sandbox` fails loudly, not silently

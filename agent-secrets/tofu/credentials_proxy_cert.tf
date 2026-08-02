@@ -4,10 +4,10 @@
 # TLS with the server cert below. The CA cert is baked into the sandbox image
 # (system trust store + NODE_EXTRA_CA_CERTS for Bun).
 #
-# Private keys live only here in state and in infisical. Hosts fetch what they
-# need on demand via credentials-proxy/materialize-certs.sh; nothing is
-# committed to git. Rotating: change something (or wait for early renewal on
-# the server cert), apply, restart the proxy, rebuild the sandbox image.
+# Private keys live only here in state and in infisical, fetched on demand
+# (e.g. `infisical secrets get NAME --plain`); nothing is committed to git.
+# Rotating: change something (or wait for early renewal on the server cert),
+# apply, restart the proxy, rebuild the sandbox image.
 
 resource "tls_private_key" "credentials_proxy_ca" {
   algorithm = "RSA"
