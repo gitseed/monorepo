@@ -50,6 +50,13 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 - `-it` without a TTY fails here too ("the input device is not a TTY" vs
   apple/container's NSPOSIXErrorDomain Code=19); only pass `-it` when a
   TTY exists (`[[ -t 0 && -t 1 ]]`).
+- Proxy readiness is fast when healthy: measured 5 consecutive
+  credentials-proxy starts at 0.66-1.33s total (docker run returns in
+  ~0.6-1.3s; the inspect+nc readiness loop passes on its FIRST
+  evaluation, ~55-65ms). up.sh's 20s deadline is 15-30x headroom. An
+  observed single timeout despite a live envoy means a predicate
+  permanently failed (OrbStack-side), not slow startup -- deadline
+  tuning won't fix that flavor of flake.
 - `docker run --name X` when X exists errors like apple/container did
   (leftover stopped containers block reuse); `docker rm -f` is the fix.
 - Labels/naming: session-scoped containers named `<purpose>-<host pid>`
