@@ -44,10 +44,14 @@ flowchart LR
 under it you invoked the script -- the sandbox works on this one
 project.
 
-The script discovers the session proxy's address via `docker inspect` and
-maps `openrouter.ai` there with `--add-host` on the sandbox's `docker run`. Exiting the sandbox (or Ctrl-C) stops
-both containers via a trap -- no credential-bearing process outlives a
-session, and no sandbox can point at a stale proxy address.
+Service definitions, the network, and the proxy healthcheck live in
+`../compose.yml`; up.sh runs each session as its own compose project
+(`omp-sandbox-<pid>`), injects secrets through `infisical run --`, waits
+for the proxy's healthcheck, discovers its address, and maps
+`openrouter.ai` there via the sandbox's `extra_hosts`. Exiting the
+sandbox (or Ctrl-C) triggers a trap that runs `compose down` --
+everything the session created is reaped by label, so no
+credential-bearing process outlives a session.
 
 Cert rotation is absorbed by the daily staleness rebuild; same-day rotation
 needs `docker image rm omp-sandbox` (buildkit never busts its cache on

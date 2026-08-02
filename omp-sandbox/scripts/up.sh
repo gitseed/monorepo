@@ -4,52 +4,51 @@
 #   omp-sandbox/scripts/up.sh      # build if stale, session proxy, interactive omp
 #   omp-sandbox/scripts/up.sh bash # a plain shell instead of omp
 #
-# The sandbox exists to work on THIS monorepo: /workspace always mounts
-# the whole repo root, never a subdirectory and never an external
-# project. Invocation cwd is therefore irrelevant.
+# The sandbox works on THIS monorepo: /workspace always mounts the whole
+# repo root (compose.yml's relative bind), and the build contexts live
+# there too. Invocation cwd is irrelevant.
 #
-# Builds: each image is rebuilt only if it was NOT built today. This doubles
-# as the cert-rotation path: a tofu-applied rotation is picked up by the next
-# run (secret mounts never bust the build cache, so same-day builds must not
-# be trusted after a rotation -- just wait a day or rm the image).
-#
-# Lifecycle: the credentials proxy is launched per session in the background
-# and both containers are torn down on exit. Nothing credential-bearing
-# outlives a session, and no sandbox can ever point at a stale proxy address.
+# Topology and container plumbing live in compose.yml at the repo root
+# (services, network, healthcheck, extra_hosts). What stays here is what
+# compose can't express:
+#   - daily-staleness rebuilds (cert-rotation absorption; secret mounts
+#     never bust the build cache, so same-day builds must not be
+#     trusted after a rotation -- wait a day or rm the image)
+#   - infisical: `infisical run -- docker compose ...` injects the
+#     secrets into compose's own env, which passes them into builds and
+#     the proxy container without touching disk
+#   - PROXY_IP discovery for the sandbox's openrouter.ai hosts entry
+#   - cleanup: per-session compose projects (omp-sandbox-$$) let
+#     `compose down` reap everything this session owns by label
 set -euo pipefail
 
 # GIT_PROJECT_DIR: the single repo that defines both the tooling (build
-# contexts are relative to it) and the agent's work (mounted into the
-# sandbox at /workspace). Anchored to this script's location, not the
-# caller's cwd, so subdir invocation mounts the full root.
+# contexts are relative to it) and the agent's work (mounted at
+# /workspace). Anchored to this script's location, not the caller's cwd.
 GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$GIT_PROJECT_DIR"
 
-NETWORK=agent
-PROXY_NAME=credentials-proxy-$$
-SANDBOX_NAME=omp-sandbox-$$
+COMPOSE=(docker compose -p omp-sandbox-$$)
 
 cleanup() {
     local status=$?
-    # --rm containers are usually already gone at this point, which is fine
-    # and silent. What must never pass silently: a container that is still
-    # alive and cannot be stopped -- in particular the proxy, which holds
-    # injected credentials for as long as it runs.
-    local name
-    for name in "$SANDBOX_NAME" "$PROXY_NAME"; do
-        docker inspect "$name" >/dev/null 2>&1 || continue
-        if ! docker stop "$name" >/dev/null 2>&1; then
-            echo "WARNING: could not stop $name -- it may still be running." >&2
-            echo "         stop it manually: docker rm -f $name" >&2
-            status=1
-        fi
-    done
+    # compose down reaps by label: sandbox, proxy, anything else the
+    # project created. A --rm `compose run` usually already took the
+    # sandbox; that is fine. What must never pass silently: failure here
+    # means a credential-bearing proxy container may still be alive.
+    if ! "${COMPOSE[@]}" down --timeout 3 2>&1; then
+        echo "WARNING: compose down failed -- the session proxy may still" >&2
+        echo "         be running with injected credentials. Reap by label:" >&2
+        echo "         docker ps -q --filter label=com.docker.compose.project=omp-sandbox-$$ | xargs -r docker rm -f" >&2
+        status=1
+    fi
     return $status
 }
 trap cleanup EXIT
 
-docker network inspect "$NETWORK" >/dev/null 2>&1 \
-    || docker network create "$NETWORK" >/dev/null
+# Shared L2 for all sessions; compose needs it declared external.
+docker network inspect agent >/dev/null 2>&1 \
+    || docker network create agent >/dev/null
 
 stale() {
     # true when the image is missing or was not built today (UTC)
@@ -61,56 +60,34 @@ stale() {
 
 if stale credentials-proxy; then
     echo "building credentials-proxy (not built today)..."
-    docker build --pull --no-cache \
-        --tag credentials-proxy \
-        --file credentials-proxy/container/main.containerfile \
-        credentials-proxy/container/
+    "${COMPOSE[@]}" build --pull --no-cache proxy
 fi
 
 if stale omp-sandbox; then
     echo "building omp-sandbox (not built today)..."
     infisical run -- \
-        docker build --pull --no-cache \
-            --tag omp-sandbox \
-            --secret id=ca_cert,env=CREDENTIALS_PROXY_CA_CERT \
-            --file omp-sandbox/container/main.containerfile \
-            omp-sandbox/container/
+        "${COMPOSE[@]}" build --pull --no-cache sandbox
 fi
 
 echo "starting credentials proxy..."
+# --wait blocks until the healthcheck passes (envoy accepting :443).
 infisical run -- \
-    docker run --rm -d \
-        --name "$PROXY_NAME" \
-        --network "$NETWORK" \
-        --env OPENROUTER_API_KEY \
-        --env CREDENTIALS_PROXY_SERVER_CERT \
-        --env CREDENTIALS_PROXY_SERVER_KEY \
-        credentials-proxy >/dev/null
+    "${COMPOSE[@]}" up -d --wait proxy
 
-PROXY_IP=
-deadline=$((SECONDS + 20))
-until [[ $(docker inspect "$PROXY_NAME" 2>/dev/null \
-            | jq -r '.[0].State.Status // empty') == running ]] \
-        && PROXY_IP=$(docker inspect "$PROXY_NAME" 2>/dev/null \
-            | jq -r --arg net "$NETWORK" '.[0].NetworkSettings.Networks[$net].IPAddress // empty') \
-        && [[ -n $PROXY_IP ]] \
-        && nc -z "$PROXY_IP" 443 2>/dev/null; do
-    if (( SECONDS >= deadline )); then
-        echo "credentials-proxy failed to come up; logs:" >&2
-        docker logs "$PROXY_NAME" 2>&1 | tail -20 >&2
-        exit 1
-    fi
-    sleep 0.5
-done
+# The sandbox maps openrouter.ai to this proxy via extra_hosts, which
+# needs the IP at parse time -- hence discovery AFTER the proxy is up.
+PROXY_IP=$(docker inspect \
+    "$("${COMPOSE[@]}" ps --quiet proxy)" \
+    | jq -r '.[0].NetworkSettings.Networks.agent.IPAddress // empty')
+[[ -n $PROXY_IP ]] || { echo "up.sh: could not discover proxy IP" >&2; exit 1; }
 
 if [[ $# -eq 0 ]]; then
     set -- omp  # default command: interactive omp
 fi
 
-docker run --rm -it \
-    --name "$SANDBOX_NAME" \
-    --network "$NETWORK" \
-    --add-host "openrouter.ai:$PROXY_IP" \
-    --volume "$GIT_PROJECT_DIR:/workspace" \
-    --workdir /workspace \
-    omp-sandbox "$@"
+# -it only when a TTY exists (macOS harnesses and CI often lack one).
+if [[ -t 0 && -t 1 ]]; then
+    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" run --rm sandbox "$@"
+else
+    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" run --rm -T sandbox "$@"
+fi

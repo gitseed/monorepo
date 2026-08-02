@@ -50,18 +50,30 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 - `-it` without a TTY fails here too ("the input device is not a TTY" vs
   apple/container's NSPOSIXErrorDomain Code=19); only pass `-it` when a
   TTY exists (`[[ -t 0 && -t 1 ]]`).
+- compose (v5) details verified here: `up -d --wait` gates on
+  healthchecks (healthy in ~5.7s -- one poll interval slower than the
+  manual ~55ms nc loop, priced for declaring instead of scripting);
+  bare `environment: - NAME` entries pass through the compose CLI
+  process's env (how infisical secrets reach the proxy);
+  env-sourced top-level secrets (`secrets: x: environment: VAR`) feed
+  `build.secrets`; `compose run --rm` needs no explicit -it (tty:true +
+  stdin_open:true on the service; pass -T headless); relative bind
+  volumes (`./:/workspace`) resolve against the compose file's dir.
 - Proxy readiness is fast when healthy: measured 5 consecutive
   credentials-proxy starts at 0.66-1.33s total (docker run returns in
   ~0.6-1.3s; the inspect+nc readiness loop passes on its FIRST
-  evaluation, ~55-65ms). up.sh's 20s deadline is 15-30x headroom. An
-  observed single timeout despite a live envoy means a predicate
-  permanently failed (OrbStack-side), not slow startup -- deadline
-  tuning won't fix that flavor of flake.
+  evaluation, ~55-65ms). Waits of ~30s (the compose healthcheck
+  budget) are enormous headroom. An observed single timeout despite a
+  live envoy means a predicate permanently failed (OrbStack-side), not
+  slow startup -- deadline tuning won't fix that flavor of flake.
 - `docker run --name X` when X exists errors like apple/container did
   (leftover stopped containers block reuse); `docker rm -f` is the fix.
 - Labels/naming: session-scoped containers named `<purpose>-<host pid>`
   lets a later run detect and reap orphans (a SIGKILLed harness can't run
-  its own EXIT trap).
+  its own EXIT trap). With compose the same job falls out for free:
+  per-session projects (`-p omp-sandbox-$$`) label every container, and
+  `docker compose down` reaps by label; orphaned projects are findable
+  via `docker ps --filter label=com.docker.compose.project`.
 - `hub stop` / SIGTERM on `docker run -d`-started orchestrators does NOT
   guarantee in-container traps run; EXIT traps only fire on graceful
   foreground exit. Design for reaping, not relying on traps alone.

@@ -1,0 +1,61 @@
+# The credential-injection boundary as one compose project. up.sh runs
+# each session under `-p omp-sandbox-$$` (per-session project name), so
+# concurrent sessions coexist on the shared network and `compose down`
+# reaps everything a session owns by label -- no name-based cleanup.
+#
+# Anything credentialed (run env, build secret) is threaded by up.sh via
+# `infisical run -- docker compose ...`: compose merely passes through
+# what that wrapper injects into its own environment.
+
+services:
+  proxy:
+    image: credentials-proxy
+    build:
+      context: credentials-proxy/container
+      dockerfile: main.containerfile
+    # Bare names: pass through from the (infisical-injected) environment
+    # of whichever compose command runs the service. Never persisted.
+    environment:
+      - OPENROUTER_API_KEY
+      - CREDENTIALS_PROXY_SERVER_CERT
+      - CREDENTIALS_PROXY_SERVER_KEY
+    networks: [agent]
+    healthcheck:
+      # Nothing credentialed is on the line: a bare TCP connect to the
+      # TLS listener proves envoy is accepting. bash /dev/tcp because the
+      # envoy image ships no curl/wget.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/443'"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+      start_period: 1s
+
+  sandbox:
+    image: omp-sandbox
+    build:
+      context: omp-sandbox/container
+      dockerfile: main.containerfile
+      secrets: [ca_cert]
+    stdin_open: true
+    tty: true
+    # Relative to this file's directory = the monorepo root.
+    volumes: ["./:/workspace"]
+    # PROXY_IP exists only after the proxy is up; up.sh sets it when
+    # running the sandbox. 127.0.0.1 is an unreachable placeholder so a
+    # hand-run `docker compose run sandbox` fails loudly, not silently
+    # to the REAL openrouter.ai.
+    extra_hosts: ["openrouter.ai:${PROXY_IP:-127.0.0.1}"]
+    networks: [agent]
+
+networks:
+  agent:
+    name: agent
+    # Pre-created by up.sh (idempotent) so concurrent sessions on
+    # different compose projects share one L2.
+    external: true
+
+secrets:
+  # Sandbox build secret comes from the environment that infisical
+  # injected into the compose CLI process; no cert files on disk.
+  ca_cert:
+    environment: CREDENTIALS_PROXY_CA_CERT
