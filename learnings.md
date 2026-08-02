@@ -128,6 +128,24 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   Authorization -- callers can send garbage and still authenticate. This
   is the whole point of the credential boundary; test it with a bogus
   header + a direct-to-upstream control request (must 401).
+- When baking new content into an image, verify the image's full
+  contract, not the delta: the openrouter->orbstack rewrite kept the
+  sandbox's CA/model scaffolding but silently dropped the omp binary
+  install step, and the rebuild verification passed because it only
+  checked the new yml files. `command -v omp` in the built image would
+  have caught it.
+- jq's fromdateiso8601 rejects docker's .Created (nanoseconds + TZ
+  offset). For daily staleness, compare the local date prefix
+  `.Created[0:10]` -- simpler and line-free of parsing failures.
+- SNI-based filter chain selection (multiple filter_chains with
+  filter_chain_match.server_names) REQUIRES the tls_inspector listener
+  filter; otherwise envoy never parses the ClientHello and every
+  connection dies with "no matching filter chain found" -- visible only
+  at `-l debug`/`trace` (info logs show a silent handshake reset).
+- envoy.yaml is COPY'd into the image at build time: after editing it,
+  rebuild BEFORE testing. Give-away of a stale image: startup logs
+  announce fewer static secrets/clusters than the edited config has
+  (caught a test run interpreting old config as new at 2:52 on 2026-08-01).
 
 ## infisical
 

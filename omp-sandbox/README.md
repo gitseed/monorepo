@@ -15,13 +15,15 @@ flowchart LR
     end
 ```
 
-- The sandbox carries only a **dummy** `OPENROUTER_API_KEY`
-  (`dummy-replaced-by-proxy`) so omp considers the provider available.
+- The sandbox carries only **dummy** key env vars
+  (`dummy-replaced-by-proxy`) so omp considers the providers available
+  without holding real credentials.
 - The sandbox shares the proxy's network namespace
   (`network_mode: service:proxy`) and mounts a static
-  `container/sandbox-hosts` as `/etc/hosts`: `openrouter.ai` is just
-  `127.0.0.1` in there, hitting envoy on loopback. Nothing about the
-  mapping is computed at runtime.
+  `container/sandbox-hosts` as `/etc/hosts`: each proxied upstream
+  (`openrouter.ai`, `api.neuralwatt.com`) is just `127.0.0.1` in
+  there, hitting envoy on loopback. Nothing about the mapping is
+  computed at runtime.
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
@@ -64,10 +66,13 @@ of the boundary. The key arrives via `infisical run` and only ever
 exists in the proxy container's environment -- never in the sandbox,
 never on disk.
 
-One listener, `:443` (TLS, cert for openrouter.ai), injecting the
-credential with `overwrite: true`: the sandbox resolves openrouter.ai
-to this container's address, so stock clients use the real
-https://openrouter.ai endpoint unchanged.
+One listener, `:443` (TLS, tofu-issued cert with one SAN per proxied
+hostname), SNI-dispatching to one filter chain per upstream:
+`openrouter.ai` forwards to real openrouter.ai injecting
+`OPENROUTER_API_KEY`; `api.neuralwatt.com` forwards to the Neurawatt
+OpenAI-compatible gateway injecting `IAN_NEURAWATT_API_TOKEN`. The
+sandbox maps both names onto the proxy, so stock clients use the real
+endpoint URLs unchanged.
 
 Certificates are tofu-managed
 (`../agent-secrets/tofu/credentials_proxy_cert.tf`) and stored in
@@ -93,6 +98,13 @@ PROXY_IP = a running proxy container's address
       --resolve openrouter.ai:443:PROXY_IP \
       -H 'Authorization: wrong' https://openrouter.ai/api/v1/auth/key
 
+    # The neurawatt chain is the same shape: bogus header, SNI decides
+    # which credential gets injected. -> 200 if the injected token is set
+    curl --fail-with-body --silent --show-error \
+      --cacert <(infisical secrets get CREDENTIALS_PROXY_CA_CERT --plain) \
+      --resolve api.neuralwatt.com:443:PROXY_IP \
+      -H 'Authorization: wrong' https://api.neuralwatt.com/v1/models
+
 Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
 
 ## Verified
@@ -101,3 +113,6 @@ Control (must be 401): `curl https://openrouter.ai/api/v1/auth/key`
   present).
 - `Authorization: Bearer bogus` through the proxy → 200 (overwrite works).
 - Direct to the real endpoint with the sandbox's key → 401.
+- The neurawatt chain likewise turns a bogus Bearer into 200 from the
+  real api.neuralwatt.com (`/v1/models`), under SNI dispatch alongside
+  openrouter on the same listener.
