@@ -49,11 +49,14 @@ trap cleanup EXIT
 
 stale() {
     # true when the image is missing or was not built today (local time
-    # -- this whole setup is laptop-scheduled, not UTC-scheduled)
-    local epoch
-    epoch=$(docker image inspect "$1" 2>/dev/null \
-        | jq -r '(.[0].Created // empty) | fromdateiso8601')
-    [[ -z ${epoch%.*} || $(date -r "${epoch%.*}" +%Y-%m-%d) != "$(date +%Y-%m-%d)" ]]
+    # -- this whole setup is laptop-scheduled, not UTC-scheduled).
+    # docker's .Created carries nanoseconds + a TZ offset, which jq's
+    # fromdateiso8601/bsd date round-trip both choke on; docker emits
+    # the offset in local time anyway, so compare the date prefix.
+    local created
+    created=$(docker image inspect "$1" 2>/dev/null \
+        | jq -r '(.[0].Created // empty)[0:10]')
+    [[ -z $created || $created != "$(date +%Y-%m-%d)" ]]
 }
 
 if stale credentials-proxy; then

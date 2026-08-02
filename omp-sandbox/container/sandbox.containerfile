@@ -52,6 +52,11 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
+# The omp prebuilt binary (linux/arm64, glibc) -- the payload this image
+# exists to sandbox.
+RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
+        | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
+
 # Trust the local CA that signs the proxy's openrouter.ai certificate.
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
     cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
