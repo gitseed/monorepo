@@ -24,14 +24,16 @@ services:
     # The proxy must NEVER consume its own network aliases (docker's
     # embedded DNS is network-wide and would resolve openrouter.ai and
     # api.neuralwatt.com back to the proxy -- an infinite forwarding
-    # loop, now failing closed on SAN mismatch). Point its resolver at the
-    # OrbStack host-forwarder (0.250.250.200 -- the exact endpoint embedded
-    # DNS forwards to; see /etc/resolv.conf's ExtServers comment) so
-    # upstream resolution bypasses 127.0.0.11 and the aliases while staying
-    # on the host's resolver stack -- Cloudflare WARP sees no difference.
-    # If OrbStack ever moves this address the healthcheck fails loudly.
-    dns:
-      - 0.250.250.200
+    # loop, now failing closed on SAN mismatch). Its resolver instead
+    # points at the OrbStack host-forwarder that embedded DNS itself
+    # fans out to, DISCOVERED AT RUNTIME by container/proxy-entrypoint.sh
+    # from the `# ExtServers: [host(<ip>)]` comment dockerd writes into
+    # the generated /etc/resolv.conf: same host resolver stack (WARP
+    # transparent), no hardcoded OrbStack-internal address. Discovery
+    # failure exits before envoy execs -- the healthcheck's bare TCP
+    # connect cannot catch dead DNS since envoy binds its listener
+    # regardless (wait_for_warm_on_init: false), so entrypoint failure
+    # is where "OrbStack moved the address" becomes loud.
     # The sandbox finds the proxy by the REAL upstream hostnames: embedded
     # DNS answers these aliases on the per-session project network, so no
     # static IPs, no shared network namespace, no /etc/hosts overrides.

@@ -23,9 +23,16 @@ flowchart LR
   embedded DNS resolves them to the proxy for every container on the
   per-session project network. No static IPs, no /etc/hosts overrides,
   no shared network namespace. Aliases are network-wide, so the proxy
-  exempts itself: its resolver points at the OrbStack host-forwarder
-  (compose `dns:`), bypassing embedded DNS and any alias loop while
-  keeping resolution on the host's stack -- no WARP interaction.
+  exempts itself: `container/proxy-entrypoint.sh` parses the
+  host-forwarder address out of docker's generated resolv.conf
+  (`# ExtServers: [host(<ip>)]`) and points the container's resolver
+  straight at it before envoy starts -- bypassing embedded DNS and any
+  alias loop while keeping resolution on the host's stack -- no WARP
+  interaction, no hardcoded OrbStack-internal address. If discovery or
+  the alias-escape check fails the container exits before envoy binds,
+  which is the only loud failure mode available (the compose
+  healthcheck is a bare TCP connect and envoy binds regardless of
+  upstream DNS health).
 - AAAA queries for an alias get an empty answer from embedded DNS --
   nothing leaks to real DNS, and Bun's happy eyeballs has no IPv6
   route to race anyway. The old hosts-file design needed paired
