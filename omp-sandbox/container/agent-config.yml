@@ -1,5 +1,6 @@
 modelRoles:
   default: openrouter/deepseek/deepseek-v4-flash-0731
+symbolPreset: nerd
 defaultThinkingLevel: high
 hideThinkingBlock: true
 memory:
