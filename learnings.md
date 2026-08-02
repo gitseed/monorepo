@@ -50,6 +50,14 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 - `-it` without a TTY fails here too ("the input device is not a TTY" vs
   apple/container's NSPOSIXErrorDomain Code=19); only pass `-it` when a
   TTY exists (`[[ -t 0 && -t 1 ]]`).
+- openrouter.ai must map to the proxy ONLY inside the sandbox
+  container. Verified rejections: (a) network alias on the proxy --
+  embedded-DNS aliases are network-wide, the PROXY then resolves
+  openrouter.ai to ITSELF (observed: getent inside the proxy returned
+  its own IP -- an infinite forwarding loop); (b) static IP per
+  session -- the docker daemon refuses networks with overlapping
+  subnets, so per-session static IPs need per-session subnets.
+  extra_hosts + runtime IP discovery in up.sh is what survives.
 - Sessions are ISOLATED, one compose project each with its own
   generated default network. An earlier design had a shared `agent`
   network declared external; compose has no ownership model for

@@ -41,14 +41,19 @@ services:
     # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
     # up.sh assert the same answer explicitly.
     volumes: ["${GIT_PROJECT_DIR:-..}:/workspace"]
-    # PROXY_IP exists only after the proxy is up; up.sh sets it when
-    # running the sandbox. 127.0.0.1 is an unreachable placeholder so a
-    # hand-run `docker compose run sandbox` fails loudly, not silently
-    # to the REAL openrouter.ai.
-    extra_hosts: ["openrouter.ai:${PROXY_IP:-127.0.0.1}"]
     # No explicit network: every session (compose project) gets its OWN
     # default network, so concurrent sessions are isolated L2 islands;
     # compose owns it and reaps it on down like everything else.
+    #
+    # openrouter.ai maps to the proxy via extra_hosts -- deliberately
+    # NOT a network alias on the proxy: embedded-DNS aliases are
+    # network-wide, so the PROXY would resolve openrouter.ai to itself
+    # (verified; that's an infinite forwarding loop). /etc/hosts is
+    # per-container, which is precisely the scoping needed here.
+    # PROXY_IP only exists after the proxy is up, so up.sh sets it at
+    # run time; the 127.0.0.1 default makes a hand-run sandbox without
+    # it fail loudly instead of reaching the REAL openrouter.ai.
+    extra_hosts: ["openrouter.ai:${PROXY_IP:-127.0.0.1}"]
 
 secrets:
   # Sandbox build secret comes from the environment that infisical

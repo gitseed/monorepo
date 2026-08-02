@@ -3,8 +3,8 @@
 # omp coding-agent sandbox. No real credentials inside: the only model
 # endpoint reachable with valid auth is https://openrouter.ai, which the
 # runner routes to the envoy proxy container (the compose service's
-# extra_hosts maps openrouter.ai to the proxy's IP in /etc/hosts), where
-# envoy injects the real API key.
+# extra_hosts maps openrouter.ai to the proxy's IP in /etc/hosts),
+# where envoy injects the real API key.
 #
 # The CA cert arrives as a build secret straight from infisical; no disk
 # files, no committed material (from the omp-sandbox dir; usually just

@@ -18,7 +18,9 @@ flowchart LR
 - The sandbox carries only a **dummy** `OPENROUTER_API_KEY`
   (`dummy-replaced-by-proxy`) so omp considers the provider available.
 - The sandbox resolves `openrouter.ai` to the **proxy container's** address
-  (`/etc/hosts`, via the sandbox's `extra_hosts` at container-create time).
+  (`/etc/hosts` via the sandbox's `extra_hosts`, set per session; see
+  compose.yml for why a network alias is wrong -- the proxy would
+  resolve it to itself).
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
@@ -47,12 +49,12 @@ project.
 
 Service definitions, the network, and the proxy healthcheck live in
 `compose.yml`; up.sh runs each session as its own compose project
-(`omp-sandbox-<pid>`), injects secrets through `infisical run --`, waits
-for the proxy's healthcheck, discovers its address, and maps
-`openrouter.ai` there via the sandbox's `extra_hosts`. Exiting the
-sandbox (or Ctrl-C) triggers a trap that runs `compose down` --
-everything the session created is reaped by label, so no
-credential-bearing process outlives a session.
+(`omp-sandbox-<pid>`), injects secrets through `infisical run --`, and
+waits for the proxy's healthcheck, discovers its address for the
+sandbox's hosts entry. Exiting the sandbox (or Ctrl-C)
+triggers a trap that runs `compose down` -- everything the session
+created is reaped by label, so no credential-bearing process outlives a
+session.
 
 ## The proxy service
 

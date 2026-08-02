@@ -81,7 +81,7 @@ static_resources:
         num_retries: 1
     # The proxy itself must resolve openrouter.ai to the REAL upstream.
     # Only the sandbox container gets the proxy address, via its
-    # /etc/hosts entry.
+    # /etc/hosts entry (extra_hosts in ../compose.yml).
     connect_timeout: 2s
     load_assignment:
       cluster_name: openrouter

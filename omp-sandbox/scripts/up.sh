@@ -74,9 +74,9 @@ infisical run -- \
     "${COMPOSE[@]}" -p "$PROJECT" up -d --wait proxy
 
 # The sandbox maps openrouter.ai to this proxy via extra_hosts, which
-# needs the IP at parse time -- hence discovery AFTER the proxy is up.
-# The session's network is compose-generated (isolated per session), so
-# take whichever attachment the proxy has.
+# compose needs at parse time -- hence discovery AFTER the proxy is up
+# (the session network is compose-generated, so take whichever
+# attachment the proxy has).
 PROXY_IP=$(docker inspect \
     "$("${COMPOSE[@]}" -p "$PROJECT" ps --quiet proxy)" \
     | jq -r '.[0].NetworkSettings.Networks | to_entries[0].value.IPAddress // empty')
