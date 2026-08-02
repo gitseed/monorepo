@@ -50,6 +50,14 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 - `-it` without a TTY fails here too ("the input device is not a TTY" vs
   apple/container's NSPOSIXErrorDomain Code=19); only pass `-it` when a
   TTY exists (`[[ -t 0 && -t 1 ]]`).
+- Sessions are ISOLATED, one compose project each with its own
+  generated default network. An earlier design had a shared `agent`
+  network declared external; compose has no ownership model for
+  cross-project sharing (verified: a session's `down` attempted to
+  remove the shared network while a sibling was live -- daemon endpoint
+  refcounts merely masked it). Isolation is the clean fix: each
+  session's teardown provably only touches its own network
+  (verified with two concurrent sessions on disjoint /24s)
 - compose (v5) details verified here: `up -d --wait` gates on
   healthchecks (healthy in ~5.7s -- one poll interval slower than the
   manual ~55ms nc loop, priced for declaring instead of scripting);
@@ -70,10 +78,15 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   (leftover stopped containers block reuse); `docker rm -f` is the fix.
 - Labels/naming: session-scoped containers named `<purpose>-<host pid>`
   lets a later run detect and reap orphans (a SIGKILLed harness can't run
-  its own EXIT trap). With compose the same job falls out for free:
-  per-session projects (`-p omp-sandbox-$$`) label every container, and
-  `docker compose down` reaps by label; orphaned projects are findable
-  via `docker ps --filter label=com.docker.compose.project`.
+  its own EXIT trap). With compose the same job falls out: per-session
+  projects (`-p omp-sandbox-$$`) label everything they own
+  (containers AND networks), and `compose -p <stale> down
+  --remove-orphans` reaps it all. up.sh runs such a reaper at startup.
+  Enumerate orphans via raw label filters on `docker ps -a` and
+  `docker network ls` -- NOT `docker compose ls`, which silently
+  OMITS crashed/zombie sessions from its own live tracking.
+  Conservative on host pid reuse: reaping fires only when the pid
+  embedded in the project name is dead.
 - `hub stop` / SIGTERM on `docker run -d`-started orchestrators does NOT
   guarantee in-container traps run; EXIT traps only fire on graceful
   foreground exit. Design for reaping, not relying on traps alone.

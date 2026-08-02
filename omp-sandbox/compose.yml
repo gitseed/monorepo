@@ -1,7 +1,8 @@
 # The credential-injection boundary as one compose project. up.sh runs
 # each session under `-p omp-sandbox-$$` (per-session project name), so
-# concurrent sessions coexist on the shared network and `compose down`
-# reaps everything a session owns by label -- no name-based cleanup.
+# concurrent sessions are fully isolated (per-project default network)
+# and `compose down` reaps everything a session owns by label -- no
+# name-based cleanup.
 #
 # Anything credentialed (run env, build secret) is threaded by up.sh via
 # `infisical run -- docker compose ...`: compose merely passes through
@@ -19,7 +20,6 @@ services:
       - OPENROUTER_API_KEY
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
-    networks: [agent]
     healthcheck:
       # Nothing credentialed is on the line: a bare TCP connect to the
       # TLS listener proves envoy is accepting. bash /dev/tcp because the
@@ -46,14 +46,9 @@ services:
     # hand-run `docker compose run sandbox` fails loudly, not silently
     # to the REAL openrouter.ai.
     extra_hosts: ["openrouter.ai:${PROXY_IP:-127.0.0.1}"]
-    networks: [agent]
-
-networks:
-  agent:
-    name: agent
-    # Pre-created by up.sh (idempotent) so concurrent sessions on
-    # different compose projects share one L2.
-    external: true
+    # No explicit network: every session (compose project) gets its OWN
+    # default network, so concurrent sessions are isolated L2 islands;
+    # compose owns it and reaps it on down like everything else.
 
 secrets:
   # Sandbox build secret comes from the environment that infisical

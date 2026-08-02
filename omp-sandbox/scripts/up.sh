@@ -28,7 +28,8 @@ set -euo pipefail
 GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$GIT_PROJECT_DIR"
 
-COMPOSE=(docker compose -p omp-sandbox-$$ -f omp-sandbox/compose.yml)
+COMPOSE=(docker compose -f omp-sandbox/compose.yml)
+PROJECT=omp-sandbox-$$
 export GIT_PROJECT_DIR
 
 cleanup() {
@@ -37,19 +38,36 @@ cleanup() {
     # project created. A --rm `compose run` usually already took the
     # sandbox; that is fine. What must never pass silently: failure here
     # means a credential-bearing proxy container may still be alive.
-    if ! "${COMPOSE[@]}" down --timeout 3 2>&1; then
+    if ! "${COMPOSE[@]}" -p "$PROJECT" down --timeout 3 2>&1; then
         echo "WARNING: compose down failed -- the session proxy may still" >&2
         echo "         be running with injected credentials. Reap by label:" >&2
-        echo "         docker ps -q --filter label=com.docker.compose.project=omp-sandbox-$$ | xargs -r docker rm -f" >&2
+        echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
         status=1
     fi
     return $status
 }
 trap cleanup EXIT
 
-# Shared L2 for all sessions; compose needs it declared external.
-docker network inspect agent >/dev/null 2>&1 \
-    || docker network create agent >/dev/null
+# Orphan reaping: traps never run when the harness SIGKILLs us, so a
+# proxy (holding injected credentials) can outlive its session. Project
+# names carry the owning pid; if that pid is dead, the session is dead --
+# any later run reaps it by label. Conservative on pid reuse: a LIVE pid
+# that isn't ours just means we skip reaping that project. Enumeration
+# goes off raw docker labels, NOT `docker compose ls` (which
+# silently drops sessions whose containers aren't in its own live view).
+for proj in $( {
+        docker ps -a --filter "label=com.docker.compose.project" \
+            --format '{{.Label "com.docker.compose.project"}}'
+        docker network ls --filter "label=com.docker.compose.project" \
+            --format '{{.Label "com.docker.compose.project"}}'
+    } | sort -u ); do
+    [[ $proj == omp-sandbox-* ]] || continue
+    [[ $proj == "$PROJECT" ]] && continue
+    if ! kill -0 "${proj##*-}" 2>/dev/null; then
+        echo "reaping orphaned session $proj"
+        "${COMPOSE[@]}" -p "$proj" down --remove-orphans
+    fi
+done
 
 stale() {
     # true when the image is missing or was not built today (UTC)
@@ -61,25 +79,27 @@ stale() {
 
 if stale credentials-proxy; then
     echo "building credentials-proxy (not built today)..."
-    "${COMPOSE[@]}" build --pull --no-cache proxy
+    "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
 fi
 
 if stale omp-sandbox; then
     echo "building omp-sandbox (not built today)..."
     infisical run -- \
-        "${COMPOSE[@]}" build --pull --no-cache sandbox
+        "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache sandbox
 fi
 
 echo "starting credentials proxy..."
 # --wait blocks until the healthcheck passes (envoy accepting :443).
 infisical run -- \
-    "${COMPOSE[@]}" up -d --wait proxy
+    "${COMPOSE[@]}" -p "$PROJECT" up -d --wait proxy
 
 # The sandbox maps openrouter.ai to this proxy via extra_hosts, which
 # needs the IP at parse time -- hence discovery AFTER the proxy is up.
+# The session's network is compose-generated (isolated per session), so
+# take whichever attachment the proxy has.
 PROXY_IP=$(docker inspect \
-    "$("${COMPOSE[@]}" ps --quiet proxy)" \
-    | jq -r '.[0].NetworkSettings.Networks.agent.IPAddress // empty')
+    "$("${COMPOSE[@]}" -p "$PROJECT" ps --quiet proxy)" \
+    | jq -r '.[0].NetworkSettings.Networks | to_entries[0].value.IPAddress // empty')
 [[ -n $PROXY_IP ]] || { echo "up.sh: could not discover proxy IP" >&2; exit 1; }
 
 if [[ $# -eq 0 ]]; then
@@ -88,7 +108,7 @@ fi
 
 # -it only when a TTY exists (macOS harnesses and CI often lack one).
 if [[ -t 0 && -t 1 ]]; then
-    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" run --rm sandbox "$@"
+    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" -p "$PROJECT" run --rm sandbox "$@"
 else
-    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" run --rm -T sandbox "$@"
+    PROXY_IP="$PROXY_IP" "${COMPOSE[@]}" -p "$PROJECT" run --rm -T sandbox "$@"
 fi
