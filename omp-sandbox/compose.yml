@@ -28,8 +28,10 @@ services:
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
       # Persistent agent state (~/.omp: memory, history, sessions, config)
-      # lives on the host so it survives teardown and daily image rebuilds.
-      - "${OMP_SANDBOX_HOME:-/tmp/omp-sandbox-agent}:/root/.omp"
+      # lives in the 'omp-agent' named volume so it survives container
+      # teardown and daily image rebuilds. external: true -> shared across
+      # runs despite the per-run project name.
+      - omp-agent:/root/.omp
     cap_drop:
     - NET_RAW
     - NET_ADMIN
@@ -37,3 +39,7 @@ services:
 secrets:
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
+
+volumes:
+  omp-agent:
+    external: true

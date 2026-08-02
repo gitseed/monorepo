@@ -4,11 +4,13 @@ Ranked top-to-bottom by leverage: each item unblocks what sits below it.
 
 ## P0 — unblocks everything else
 
-1. **Persist the agent brain (`~/.omp`) on a host volume**
-   - `compose.yml`: bind `$OMP_SANDBOX_HOME:/root/.omp`.
-   - `scripts/up.bash`: define `OMP_SANDBOX_HOME` (default `$HOME/.omp-sandbox`),
-     mkdir it, and seed `agent/config.yml` once from
-     `container/agent-config.yml` (the mount shadows the image-baked copy).
+1. **Persist the agent brain (`~/.omp`) on a named volume**
+   - `compose.yml`: mount `omp-agent:/root/.omp`; top-level `volumes:
+     omp-agent: {external: true}` (external so it is not re-scoped per run by
+     the `$$` project name).
+   - `scripts/up.bash`: `docker volume create omp-agent` (idempotent). Created
+     empty once; the image's baked `config.yml`/`natives/` populate it on first
+     mount, no seed step needed.
    - Without this, memory, history, and session state die on every teardown
      and daily rebuild (`memory.backend: local` makes it worse). Nothing else
      matters if the agent forgets the project every morning.

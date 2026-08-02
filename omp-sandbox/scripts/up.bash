@@ -11,17 +11,12 @@ COMPOSE=(docker compose -f omp-sandbox/compose.yml)
 PROJECT=omp-sandbox-$$
 export GIT_PROJECT_DIR
 
-# Persistent agent state lives on the host so memory, history, sessions, and
-# config survive container teardown and daily image rebuilds. Seed the config
-# once: the volume mount shadows the image-baked copy. Delete
-# "$OMP_SANDBOX_HOME/agent/config.yml" to re-seed from the repo template.
-OMP_SANDBOX_HOME="${OMP_SANDBOX_HOME:-$HOME/.omp-sandbox}"
-mkdir -p "$OMP_SANDBOX_HOME/agent"
-if [[ ! -f "$OMP_SANDBOX_HOME/agent/config.yml" ]]; then
-    cp "$GIT_PROJECT_DIR/omp-sandbox/container/agent-config.yml" \
-        "$OMP_SANDBOX_HOME/agent/config.yml"
-fi
-export OMP_SANDBOX_HOME
+# Persistent agent state lives in the 'omp-agent' named volume, so memory,
+# history, sessions, and config survive container teardown and daily image
+# rebuilds. external: true -> not re-scoped per run by the $$ project name.
+# Created empty once; image contents populate it on first mount, and existing
+# state is preserved across later runs and rebuilds.
+docker volume create omp-agent >/dev/null 2>&1 || true
 
 cleanup() {
     local status=$?
