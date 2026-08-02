@@ -1,5 +1,5 @@
 modelRoles:
-  default: neurawatt/kimi-k3
+  default: openrouter/deepseek/deepseek-v4-flash-0731
 defaultThinkingLevel: max
 hideThinkingBlock: true
 memory:

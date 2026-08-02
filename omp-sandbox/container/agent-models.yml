@@ -1,9 +1,0 @@
-# The proxy overwrites the auth header. Never paste a real key here.
-providers:
-  neurawatt:
-    baseUrl: https://api.neuralwatt.com/v1/
-    api: openai-completions
-    apiKey: dummy-replaced-by-proxy
-    models:
-      - id: kimi-k3
-        name: Kimi k3

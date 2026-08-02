@@ -6,7 +6,6 @@ services:
       dockerfile: proxy.containerfile
     environment:
       - OPENROUTER_API_KEY
-      - IAN_NEURAWATT_API_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
     healthcheck:
@@ -26,7 +25,6 @@ services:
     tty: true
     links:
       - "proxy:openrouter.ai"
-      - "proxy:api.neuralwatt.com"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
     cap_drop:

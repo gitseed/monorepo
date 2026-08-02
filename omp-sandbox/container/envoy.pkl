@@ -20,12 +20,6 @@ local upstreams: Listing<Upstream> = new {
     secret = "openrouter_api_key"
     env = "OPENROUTER_API_KEY"
   }
-  new {
-    host = "api.neuralwatt.com"
-    name = "neuralwatt"
-    secret = "ian_neurawatt_api_token"
-    env = "IAN_NEURAWATT_API_TOKEN"
-  }
 }
 
 /// One cert covers every chain: it carries a SAN per proxied hostname.

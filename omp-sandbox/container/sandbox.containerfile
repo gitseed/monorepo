@@ -38,11 +38,9 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
 # Bun's fetch ignores the system trust store.
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem
 
-# Placeholders so omp considers these providers available.
+# Placeholder so omp considers the provider available.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
-ENV IAN_NEURAWATT_API_TOKEN=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
-COPY agent-models.yml /root/.omp/agent/models.yml
 
 CMD ["bash"]
