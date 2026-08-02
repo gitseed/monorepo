@@ -72,6 +72,11 @@ static_resources:
                 route:
                   cluster: openrouter
                   host_rewrite_literal: openrouter.ai
+                  # Envoy's route timeout (default 15s) bounds the ENTIRE
+                  # response; LLM streams routinely exceed it and get reset
+                  # mid-stream. 0s disables it; the HCM stream_idle_timeout
+                  # (default 5m) still reaps streams that stop moving bytes.
+                  timeout: 0s
           access_log:
           - name: envoy.access_loggers.stdout
             typed_config:
@@ -122,6 +127,9 @@ static_resources:
                 route:
                   cluster: neuralwatt
                   host_rewrite_literal: api.neuralwatt.com
+                  # Same as the openrouter route: no total-response bound
+                  # on streaming completions.
+                  timeout: 0s
           access_log:
           - name: envoy.access_loggers.stdout
             typed_config:
