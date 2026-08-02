@@ -108,6 +108,36 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
 
 ## envoy
 
+- An `UpstreamTlsContext` with only `sni:` performs NO upstream
+  certificate verification: no chain check, no SAN check. Combined with
+  DNS being forgeable from inside the shared netns (NET_RAW sandbox,
+  AF_PACKET loopback sniff of envoy's 127.0.0.11 queries + a raw-socket
+  reply matching the DNAT'd reply tuple), any TLS endpoint could receive
+  the injected credential -- the kill chain another agent demoed inside
+  this sandbox. Fix: `common_tls_context.validation_context` (chain
+  against /etc/ssl/certs/ca-certificates.crt + exact-SAN
+  `match_typed_subject_alt_names`) on every upstream cluster, AND
+  `cap_drop: [NET_RAW, NET_ADMIN]` + `no-new-privileges` on the sandbox
+  in compose. The v3 field lives under `common_tls_context`, NOT
+  directly on UpstreamTlsContext (the old beta path errors with 'no
+  such field'). Verified: a self-signed impostor on a docker network
+  alias got 503'd and logged zero requests; real upstreams unchanged.
+- Methodological postmortem: a prior threat analysis of the same
+  netns-sharing design verified every CONFIDENTIALITY leg ('both legs
+  are TLS ciphertext, key never readable') and was wrong anyway,
+  because it never asked the question that matters: what decides the
+  destination, and who can influence that decision? Destination
+  selection here was DNS refreshed every ~5s on an interface the
+  sandbox could sniff/inject -- influenceable by design, and TLS
+  without a validation context authenticates no one. For security
+  claims on a data-influenced path, enumerate the trust inputs
+  (resolution, routing, identity) and audit EACH for who can write
+  them; listing ciphertext legs is not a threat model.
+- Best DNS-poisoning simulation without packet tricks: give a container
+  `--network-alias <public-hostname>` on the compose project network --
+  docker's embedded 127.0.0.11 resolver answers the alias
+  deterministically instead of forwarding.
+
 - `RouteAction.timeout` defaults to **15s** and bounds the ENTIRE upstream
   response, not time-to-first-byte. A streaming completion that runs
   longer gets envoy-reset mid-flight (clients see "socket connection

@@ -55,6 +55,17 @@ services:
     # plumbing. /etc/hosts remains per-container, so the proxy still
     # resolves openrouter.ai to the REAL upstream.
     network_mode: service:proxy
+    # In the shared-netns topology the docker default cap set is an
+    # exploit primitive: NET_RAW gives the sandbox AF_PACKET loopback
+    # sniffing AND raw-packet injection (forged DNS answers to envoy's
+    # resolver, matching the DNAT'd tuple), and NET_ADMIN is routing/
+    # nftables control the sandbox has no business with. Neither is
+    # needed for agent work.
+    cap_drop:
+    - NET_RAW
+    - NET_ADMIN
+    security_opt:
+    - no-new-privileges:true
 
 secrets:
   # Sandbox build secret comes from the environment that infisical

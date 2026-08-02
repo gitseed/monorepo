@@ -181,6 +181,21 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: openrouter.ai
+        # An UpstreamTlsContext WITHOUT validation_context performs NO
+        # upstream certificate verification at all: no chain check, no
+        # SAN check. Combined with DNS answers being forgeable from
+        # inside the shared netns, any TLS endpoint could receive the
+        # injected credential (kill chain tested by a second agent from
+        # inside the sandbox). Chain against public CAs + exact SAN pins
+        # the real upstream regardless of what DNS says.
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /etc/ssl/certs/ca-certificates.crt
+            match_typed_subject_alt_names:
+            - san_type: DNS
+              matcher:
+                exact: openrouter.ai
 
   - name: neuralwatt
     type: LOGICAL_DNS
@@ -206,3 +221,13 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: api.neuralwatt.com
+        # Same as the openrouter cluster: verify chain + exact SAN, or
+        # the injected neurawatt token is one DNS lie away from leaking.
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /etc/ssl/certs/ca-certificates.crt
+            match_typed_subject_alt_names:
+            - san_type: DNS
+              matcher:
+                exact: api.neuralwatt.com
