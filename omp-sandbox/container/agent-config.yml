@@ -1,3 +1,8 @@
 modelRoles:
   default: neurawatt/kimi-k3
+memory:
+  # Project-scoped autonomous memory: at startup omp reads this project's
+  # past sessions, extracts durable decisions/pitfalls, and injects a
+  # summary into the system prompt. Off by default.
+  backend: local
 setupVersion: 1
