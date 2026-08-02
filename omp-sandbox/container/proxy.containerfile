@@ -1,10 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Credential-injecting envoy proxy. Built and run by scripts/up.sh;
-# server cert+key arrive via the environment, no cert files.
-
-# Render stage: envoy.pkl -> envoy.yaml at build time. The pinned pkl
-# binary exists only in this discarded stage.
+# The pkl binary exists only in this discarded stage.
 FROM docker.io/envoyproxy/envoy:v1.39-latest AS render
 ARG PKL_VERSION=0.28.2
 ARG PKL_SHA256=ed04d0175fd3ceaddcb5c35af657de6a96cd8018cfca9f7d14e738c98b4782bf
@@ -16,9 +12,8 @@ RUN /usr/local/bin/pkl eval --format yaml /envoy.pkl --output-path /envoy.yaml
 
 FROM docker.io/envoyproxy/envoy:v1.39-latest
 
-# ca-certificates anchors envoy.pkl's upstream cert verification (envoy
-# refuses to start without it). setcap lets envoy bind :443 while still
-# dropping to its unprivileged default user.
+# ca-certificates anchors upstream cert verification; envoy refuses to
+# start without it. setcap binds :443 without running as root.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libcap2-bin \
     && setcap 'cap_net_bind_service=+ep' /usr/local/bin/envoy \

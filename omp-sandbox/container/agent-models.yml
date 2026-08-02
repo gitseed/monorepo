@@ -1,5 +1,4 @@
-# Providers for the sandbox. The apiKey is a placeholder -- the proxy
-# overwrites the header. Never paste a real key here.
+# The proxy overwrites the auth header. Never paste a real key here.
 providers:
   neurawatt:
     baseUrl: https://api.neuralwatt.com/v1/

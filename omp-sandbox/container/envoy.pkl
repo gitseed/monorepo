@@ -1,10 +1,5 @@
-/// Credential-injection proxy config, rendered to envoy.yaml during the
-/// image build (see proxy.containerfile).
-///
-/// One shape per upstream: an SNI-selected filter chain that terminates
-/// TLS and injects the credential, and a cluster that reaches the real
-/// upstream with an exact SAN pin. To add an upstream, add an entry to
-/// `upstreams`.
+/// Rendered to envoy.yaml during the image build. To proxy another
+/// upstream, add an entry to `upstreams`.
 module envoy
 
 local class Upstream {
@@ -34,8 +29,7 @@ local upstreams: Listing<Upstream> = new {
   }
 }
 
-/// Terminate TLS with the tofu-issued cert (one SAN per hostname, so
-/// one cert covers every chain), straight from the environment.
+/// One cert covers every chain: it carries a SAN per proxied hostname.
 local downstreamTls = new Dynamic {
   name = "envoy.transport_sockets.tls"
   typed_config {
@@ -51,8 +45,8 @@ local downstreamTls = new Dynamic {
   }
 }
 
-/// TRACE/TRACK echo request headers back, which after injection would
-/// echo the real credential. Refuse them before any route runs.
+/// TRACE/TRACK echo request headers back, which after injection means
+/// echoing the real credential.
 local traceTrackRefusal = new Dynamic {
   match {
     prefix = "/"
@@ -83,8 +77,6 @@ local routerFilter = new Dynamic {
   }
 }
 
-/// Overwrite the sandbox's dummy Authorization header with the real
-/// credential.
 local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
   name = "envoy.filters.http.credential_injector"
   typed_config {
@@ -102,8 +94,8 @@ local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
-/// One chain per upstream: route and credential are selected together
-/// by SNI, so nothing can cross-inject the wrong key.
+/// Route and credential are selected together by SNI, so nothing can
+/// cross-inject the wrong key.
 local function filterChain(u: Upstream): Dynamic = new Dynamic {
   filter_chain_match { server_names { u.host } }
   transport_socket = downstreamTls
@@ -126,9 +118,9 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
                   route {
                     cluster = u.name
                     host_rewrite_literal = u.host
-                    // The 15s default bounds the whole response and
-                    // kills long LLM streams; stream_idle_timeout still
-                    // reaps hung ones.
+                    // The 15s default bounds the whole response and kills
+                    // long LLM streams; stream_idle_timeout still reaps
+                    // hung ones.
                     timeout = "0s"
                   }
                 }
@@ -146,11 +138,9 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
-/// Clusters resolve the REAL upstreams (the proxy-pointing aliases are
-/// link-scoped inside the sandbox; see ../compose.yml) and verify chain
-/// + exact SAN. Without validation_context envoy verifies NOTHING, and
-/// a forged DNS answer hands the credential to whoever answers -- that
-/// was the 2026-08-02 exfil (see README red-team notes).
+/// Without a validation_context envoy verifies nothing, and a forged DNS
+/// answer hands the credential to whoever answers -- that was the
+/// 2026-08-02 exfil (see README).
 local function cluster(u: Upstream): Dynamic = new Dynamic {
   name = u.name
   type = "LOGICAL_DNS"
@@ -190,7 +180,6 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
       sni = u.host
       common_tls_context {
         validation_context {
-          // The system bundle the containerfile installs.
           trusted_ca { filename = "/etc/ssl/certs/ca-certificates.crt" }
           match_typed_subject_alt_names {
             new {
@@ -210,8 +199,6 @@ static_resources {
     generic_secret { secret { environment_variable = u.env } }
   })
 
-  // The only listener: sandbox traffic for the upstream hostnames lands
-  // here via the compose links; SNI selects the chain.
   listeners {
     new {
       name = "upstream_https"
@@ -221,8 +208,8 @@ static_resources {
           port_value = 443
         }
       }
-      // Required for SNI chain selection; without it every handshake
-      // fails with "no matching filter chain found".
+      // Required for SNI chain selection; without it every handshake fails
+      // with "no matching filter chain found".
       listener_filters {
         new {
           name = "envoy.filters.listener.tls_inspector"
