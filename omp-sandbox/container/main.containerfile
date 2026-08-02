@@ -31,7 +31,6 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         less \
         openssh-clients \
         procps-ng \
-        python3 \
         tar \
         unzip \
         which \
