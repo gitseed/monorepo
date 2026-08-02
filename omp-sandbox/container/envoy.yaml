@@ -9,11 +9,12 @@ static_resources:
       secret:
         environment_variable: IAN_NEURAWATT_API_TOKEN
 
-  # HTTPS listener (the only one): compose gives the proxy network
-  # aliases for the upstream hostnames (openrouter.ai, api.neuralwatt.com),
-  # so sandbox getaddrinfo lands here via docker's embedded DNS while the
-  # proxy itself resolves the REAL upstreams through its overridden
-  # resolver (see compose.yml's dns: split). TLS terminates here with a
+  # HTTPS listener (the only one): the sandbox service's link-scoped
+  # aliases (compose.yml `links:`) map the upstream hostnames
+  # (openrouter.ai, api.neuralwatt.com) to the proxy inside the sandbox
+  # container only, so sandbox getaddrinfo lands here via docker's
+  # embedded DNS while the proxy's own resolver still sees the REAL
+  # upstreams (see ../compose.yml). TLS terminates here with a
   # certificate from infisical (tofu-issued, one SAN per mapped hostname;
   # the sandbox trusts the CA). SNI selects the filter chain; each chain
   # pins its own route and injected credential.
@@ -183,10 +184,10 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
         num_retries: 1
-    # The proxy itself must resolve upstream names to the REAL
-    # upstreams: compose points its resolver at the OrbStack host-
-    # forwarder (0.250.250.200) while the network aliases (which would
-    # loop back to this container) only exist in embedded DNS
+    # The proxy itself resolves upstream names to the REAL upstreams
+    # through its stock embedded-DNS resolver: the aliases mapping these
+    # names to the proxy (which would loop back to this container) are
+    # link-scoped inside the sandbox container and invisible here
     # (see ../compose.yml).
     connect_timeout: 2s
     load_assignment:

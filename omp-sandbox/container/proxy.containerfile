@@ -26,12 +26,12 @@ RUN apt-get update \
 
 COPY --chmod=0444 envoy.yaml /etc/envoy/envoy.yaml
 
-# Resolver discovery runs before envoy: parse the host-forwarder address
-# out of docker's generated resolv.conf (# ExtServers: [host(<ip>)]),
-# point this container's resolver at it, and fail the container (not the
-# request) if parsing or the alias-escape check fails -- the compose
-# healthcheck is a bare TCP connect and envoy binds its listener before
-# DNS health is known, so the die-early path is the only loud one.
+# DNS guard runs before envoy: assert the upstream hostnames resolve
+# away from this container (their proxy-pointing aliases are link-scoped
+# inside the sandbox, never network-wide) and fail the container (not
+# the request) otherwise -- the compose healthcheck is a bare TCP
+# connect and envoy binds its listener before DNS health is known, so
+# the die-early path is the only loud one.
 COPY --chmod=0755 proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/proxy-entrypoint.sh"]
 # Wikipedia rule of Dockerfile footguns: setting ENTRYPOINT resets CMD to
