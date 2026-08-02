@@ -27,6 +27,9 @@ services:
       - "proxy:openrouter.ai"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
+      # Persistent agent state (~/.omp: memory, history, sessions, config)
+      # lives on the host so it survives teardown and daily image rebuilds.
+      - "${OMP_SANDBOX_HOME:-/tmp/omp-sandbox-agent}:/root/.omp"
     cap_drop:
     - NET_RAW
     - NET_ADMIN
