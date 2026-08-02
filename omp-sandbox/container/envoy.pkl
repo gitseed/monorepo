@@ -6,8 +6,11 @@ local class Upstream {
   /// Triple duty: the SNI the sandbox sends, the host we rewrite and
   /// resolve to, and the SAN pinned on the upstream connection.
   host: String
+  /// Short name for the cluster, routes, and stats.
   name: String
+  /// generic_secret name holding the injected credential.
   secret: String
+  /// Environment variable the credential arrives in.
   env: String
 }
 
