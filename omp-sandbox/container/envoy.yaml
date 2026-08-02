@@ -6,8 +6,10 @@ static_resources:
         environment_variable: OPENROUTER_API_KEY
 
   listeners:
-  # Plain HTTP listener for local testing from the host (published on
-  # 127.0.0.1:10000). Kept from the original proof of concept.
+  # Plain-HTTP debug listener: proves credential injection without any
+  # TLS/CA plumbing. NOT published to the host; reach it at the proxy
+  # container's own IP (OrbStack routes those directly to/from the Mac)
+  # or via docker exec -- see the Quick checks section of ../README.md.
   - name: openrouter_http
     address:
       socket_address:
@@ -69,7 +71,8 @@ static_resources:
           common_tls_context:
             tls_certificates:
             # PEMs come from infisical via the container's environment
-            # (see run.sh). No key material on disk, here or on the host.
+            # (see ../scripts/up.sh). No key material on disk, here or
+            # on the host.
             - certificate_chain:
                 environment_variable: CREDENTIALS_PROXY_SERVER_CERT
               private_key:
