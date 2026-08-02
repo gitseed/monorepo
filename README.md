@@ -1,3 +1,5 @@
 This is my side project monorepo. It's intended to bring together global environment setup, permissions boundaries, AI practices and more.
 
-Layout: each project keeps its container image under `project/container/`, automation under `project/scripts/`, docs in `project/README.md`. See [`learnings.md`](learnings.md) for empirically verified notes, `agent-secrets/` for the tofu/infisical secret plane, and `omp-sandbox/` for the credential-injection boundary (sandbox + envoy proxy as one compose-driven system).
+### Layout
+
+`${project} / ${component} / ${code}`

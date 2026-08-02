@@ -1,9 +1,7 @@
 modelRoles:
   default: neurawatt/kimi-k3
-# Pin effort instead of letting the auto classifier decide.
 defaultThinkingLevel: max
 hideThinkingBlock: true
 memory:
-  # omp summarizes past project sessions into the system prompt.
   backend: local
 setupVersion: 1
