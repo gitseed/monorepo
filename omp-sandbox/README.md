@@ -9,7 +9,7 @@ flowchart LR
     subgraph sandbox[sandbox container]
         omp[omp + any HTTPS client] -->|"embedded DNS: openrouter.ai -> proxy container"| t[TLS via local CA]
     end
-    t -->|"dns alias on the session network"| envoy
+    t -->|"link-scoped dns alias"| envoy
     subgraph proxy[proxy container]
         envoy[envoy :443] -->|"credential_injector overwrites Authorization"| real[https://openrouter.ai real IP]
     end
@@ -18,25 +18,18 @@ flowchart LR
 - The sandbox carries only **dummy** key env vars
   (`dummy-replaced-by-proxy`) so omp considers the providers available
   without holding real credentials.
-- The proxy advertises the upstream hostnames (`openrouter.ai`,
-  `api.neuralwatt.com`) as compose **network aliases**: docker's
-  embedded DNS resolves them to the proxy for every container on the
-  per-session project network. No static IPs, no /etc/hosts overrides,
-  no shared network namespace. Aliases are network-wide, so the proxy
-  exempts itself: `container/proxy-entrypoint.sh` parses the
-  host-forwarder address out of docker's generated resolv.conf
-  (`# ExtServers: [host(<ip>)]`) and points the container's resolver
-  straight at it before envoy starts -- bypassing embedded DNS and any
-  alias loop while keeping resolution on the host's stack -- no WARP
-  interaction, no hardcoded OrbStack-internal address. If discovery or
-  the alias-escape check fails the container exits before envoy binds,
-  which is the only loud failure mode available (the compose
-  healthcheck is a bare TCP connect and envoy binds regardless of
-  upstream DNS health).
-- AAAA queries for an alias get an empty answer from embedded DNS --
-  nothing leaks to real DNS, and Bun's happy eyeballs has no IPv6
-  route to race anyway. The old hosts-file design needed paired
-  `127.0.0.1`/`::1` pins for this; aliases make it structural.
+- The sandbox reaches the proxy by the real upstream hostnames
+  (`openrouter.ai`, `api.neuralwatt.com`) through compose **`links`** --
+  DNS aliases scoped to the sandbox container only. No static IPs, no
+  /etc/hosts overrides, no shared network namespace, and because the
+  aliases are invisible outside the sandbox, the proxy itself resolves
+  the real upstreams with its stock resolver: no alias loop to escape,
+  no resolver override, no entrypoint machinery.
+- AAAA queries for a link alias get an empty answer from embedded DNS
+  (verified on glibc, which the sandbox runs) -- nothing leaks to real
+  DNS, and Bun's happy eyeballs has no IPv6 route to race anyway. The
+  old hosts-file design needed paired `127.0.0.1`/`::1` pins for this;
+  aliases make it structural.
 - The proxy terminates TLS with a tofu-issued, infisical-stored cert handed
   to envoy purely via its environment, no key material on disk (the sandbox
   image bakes the CA into its trust store, plus `NODE_EXTRA_CA_CERTS` for Bun),
