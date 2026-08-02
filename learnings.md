@@ -122,6 +122,17 @@ All of the below verified on OrbStack/docker 29 unless said otherwise.
   directly on UpstreamTlsContext (the old beta path errors with 'no
   such field'). Verified: a self-signed impostor on a docker network
   alias got 503'd and logged zero requests; real upstreams unchanged.
+- Methodological postmortem: a prior threat analysis of the same
+  netns-sharing design verified every CONFIDENTIALITY leg ('both legs
+  are TLS ciphertext, key never readable') and was wrong anyway,
+  because it never asked the question that matters: what decides the
+  destination, and who can influence that decision? Destination
+  selection here was DNS refreshed every ~5s on an interface the
+  sandbox could sniff/inject -- influenceable by design, and TLS
+  without a validation context authenticates no one. For security
+  claims on a data-influenced path, enumerate the trust inputs
+  (resolution, routing, identity) and audit EACH for who can write
+  them; listing ciphertext legs is not a threat model.
 - Best DNS-poisoning simulation without packet tricks: give a container
   `--network-alias <public-hostname>` on the compose project network --
   docker's embedded 127.0.0.11 resolver answers the alias
