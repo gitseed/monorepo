@@ -1,0 +1,99 @@
+static_resources:
+  secrets:
+  - name: openrouter_api_key
+    generic_secret:
+      secret:
+        environment_variable: OPENROUTER_API_KEY
+
+  # HTTPS listener (the only one): the sandbox container resolves
+  # openrouter.ai to this container's address, so stock clients can use
+  # the real https://openrouter.ai endpoint. TLS terminates here with a
+  # certificate from infisical (tofu-issued; the sandbox trusts its CA).
+  listeners:
+  - name: openrouter_https
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 443
+    filter_chains:
+    - transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            # PEMs come from infisical via the container's environment
+            # (see ../scripts/up.sh). No key material on disk, here or
+            # on the host.
+            - certificate_chain:
+                environment_variable: CREDENTIALS_PROXY_SERVER_CERT
+              private_key:
+                environment_variable: CREDENTIALS_PROXY_SERVER_KEY
+      filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: openrouter
+          route_config:
+            name: openrouter
+            virtual_hosts:
+            - name: openrouter
+              domains:
+              - "*"
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: openrouter
+                  host_rewrite_literal: openrouter.ai
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+          http_filters:
+          - name: envoy.filters.http.credential_injector
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
+              overwrite: true
+              credential:
+                name: envoy.http.injected_credentials.generic
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
+                  credential:
+                    name: openrouter_api_key
+                  header: Authorization
+                  header_value_prefix: "Bearer "
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+
+
+  clusters:
+  - name: openrouter
+    type: LOGICAL_DNS
+    dns_lookup_family: V4_ONLY
+    wait_for_warm_on_init: false
+    typed_dns_resolver_config:
+      name: envoy.network.dns_resolver.getaddrinfo
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig
+        num_retries: 1
+    # The proxy itself must resolve openrouter.ai to the REAL upstream.
+    # Only the sandbox container gets the proxy address, via its
+    # /etc/hosts entry (extra_hosts in ../compose.yml).
+    connect_timeout: 2s
+    load_assignment:
+      cluster_name: openrouter
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: openrouter.ai
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: openrouter.ai

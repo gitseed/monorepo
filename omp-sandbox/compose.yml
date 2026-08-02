@@ -1,0 +1,62 @@
+# The credential-injection boundary as one compose project. up.sh runs
+# each session under `-p omp-sandbox-$$` (per-session project name), so
+# concurrent sessions are fully isolated (per-project default network)
+# and `compose down` reaps everything a session owns by label -- no
+# name-based cleanup.
+#
+# Anything credentialed (run env, build secret) is threaded by up.sh via
+# `infisical run -- docker compose ...`: compose merely passes through
+# what that wrapper injects into its own environment.
+
+services:
+  proxy:
+    image: credentials-proxy
+    build:
+      context: ./container
+      dockerfile: proxy.containerfile
+    # Bare names: pass through from the (infisical-injected) environment
+    # of whichever compose command runs the service. Never persisted.
+    environment:
+      - OPENROUTER_API_KEY
+      - CREDENTIALS_PROXY_SERVER_CERT
+      - CREDENTIALS_PROXY_SERVER_KEY
+    healthcheck:
+      # Nothing credentialed is on the line: a bare TCP connect to the
+      # TLS listener proves envoy is accepting. bash /dev/tcp because the
+      # envoy image ships no curl/wget.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/443'"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+      start_period: 1s
+
+  sandbox:
+    image: omp-sandbox
+    build:
+      context: ./container
+      dockerfile: sandbox.containerfile
+      secrets: [ca_cert]
+    stdin_open: true
+    tty: true
+    # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
+    # up.sh assert the same answer explicitly.
+    volumes:
+      # The monorepo root = this file's parent; GIT_PROJECT_DIR lets
+      # up.sh assert the same answer explicitly.
+      - "${GIT_PROJECT_DIR:-..}:/workspace"
+      # Static /etc/hosts (see container/sandbox-hosts): the daemon
+      # rejects --add-host together with network_mode:container, so the
+      # mapping comes from a bind mount instead.
+      - ./container/sandbox-hosts:/etc/hosts:ro
+    # The sandbox shares the proxy's network namespace (compose
+    # network_mode: service:<name>): envoy is right there on loopback,
+    # so openrouter.ai maps to a STATIC 127.0.0.1 -- no runtime IP
+    # plumbing. /etc/hosts remains per-container, so the proxy still
+    # resolves openrouter.ai to the REAL upstream.
+    network_mode: service:proxy
+
+secrets:
+  # Sandbox build secret comes from the environment that infisical
+  # injected into the compose CLI process; no cert files on disk.
+  ca_cert:
+    environment: CREDENTIALS_PROXY_CA_CERT
