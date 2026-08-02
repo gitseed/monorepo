@@ -67,6 +67,22 @@ static_resources:
               domains:
               - "openrouter.ai"
               routes:
+              # TRACE is RFC-echo of request headers and TRACK is its
+              # IIS ancestor; with overwrite: true injection, a caller
+              # could ask the proxy to echo back the REAL injected
+              # credential inside the response body. Refuse both before
+              # any route runs. Non-standard verbs never belong here.
+              - match:
+                  prefix: "/"
+                  headers:
+                  - name: ":method"
+                    string_match:
+                      safe_regex:
+                        regex: "^(TRACE|TRACK)$"
+                direct_response:
+                  status: 405
+                  body:
+                    inline_string: "method not allowed\n"
               - match:
                   prefix: "/"
                 route:
@@ -122,6 +138,19 @@ static_resources:
               domains:
               - "api.neuralwatt.com"
               routes:
+              # Same as the openrouter vhost, verbatim: refuse echo-verb
+              # exfiltration of the injected header before routing.
+              - match:
+                  prefix: "/"
+                  headers:
+                  - name: ":method"
+                    string_match:
+                      safe_regex:
+                        regex: "^(TRACE|TRACK)$"
+                direct_response:
+                  status: 405
+                  body:
+                    inline_string: "method not allowed\n"
               - match:
                   prefix: "/"
                 route:
