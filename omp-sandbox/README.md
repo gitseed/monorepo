@@ -49,7 +49,7 @@ flowchart LR
   envoy's upstream TLS unverified leaked the real OpenRouter key. The
   current controls, each independently chain-breaking:
   - **envoy verifies upstream certificates** (CA bundle + exact-SAN match
-    per cluster in `container/envoy.yaml`): a hijacked resolution now
+    per cluster in `container/envoy.pkl`): a hijacked resolution now
     yields a refused handshake, not a credential handoff.
   - **sandbox drops NET_RAW and NET_ADMIN**: no loopback/L2 sniffing or
     packet forgery from inside, and no route/firewall manipulation --
