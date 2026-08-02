@@ -1,14 +1,3 @@
-# Certificate material for the credentials-proxy <-> omp-sandbox TLS endpoint.
-#
-# omp sandboxes resolve openrouter.ai to the envoy container, which terminates
-# TLS with the server cert below. The CA cert is baked into the sandbox image
-# (system trust store + NODE_EXTRA_CA_CERTS for Bun).
-#
-# Private keys live only here in state and in infisical, fetched on demand
-# (e.g. `infisical secrets get NAME --plain`); nothing is committed to git.
-# Rotating: change something (or wait for early renewal on the server cert),
-# apply, restart the proxy, rebuild the sandbox image.
-
 resource "tls_private_key" "credentials_proxy_ca" {
   algorithm = "RSA"
   rsa_bits  = 4096
