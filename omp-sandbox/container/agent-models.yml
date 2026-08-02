@@ -1,0 +1,13 @@
+# Provider definitions for the sandbox image. Modelled on the host's
+# ~/.omp/agent/models.yml, except the apiKey is a placeholder: every
+# request to api.neuralwatt.com passes through the credential-injecting
+# proxy (see ../compose.yml), which overwrites the header. Never paste a
+# real key here.
+providers:
+  neurawatt:
+    baseUrl: https://api.neuralwatt.com/v1/
+    api: openai-completions
+    apiKey: dummy-replaced-by-proxy
+    models:
+      - id: kimi-k3
+        name: Kimi k3

@@ -67,8 +67,11 @@ ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pe
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 ENV IAN_NEURAWATT_API_TOKEN=dummy-replaced-by-proxy
 
-# Pre-seeded config: skip the first-run wizard and pin the default model.
-# Auth itself comes from the proxy, not from anything here.
+# Pre-seeded config: skip the first-run wizard, pin the default model,
+# and define the neurawatt provider (dummy apiKey; the proxy injects the
+# real one -- see agent-models.yml). Auth comes from the proxy, never
+# from anything baked in here.
 COPY agent-config.yml /root/.omp/agent/config.yml
+COPY agent-models.yml /root/.omp/agent/models.yml
 
 CMD ["bash"]
