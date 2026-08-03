@@ -85,18 +85,10 @@ ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 
-# git identity and SSH commit signing for gitseed-agent.
-# The signing key is provided as a Docker runtime secret at /run/secrets/git_signing_key.
-# A profile.d script copies it to ~/.ssh with correct permissions on shell startup.
-RUN git config --global user.name "gitseed-agent" \
-    && git config --global user.email "paulcdejean+gitseedagent@gmail.com" \
-    && git config --global commit.gpgsign true \
-    && git config --global gpg.format ssh \
-    && git config --global user.signingkey /root/.ssh/signing_key \
-    && git config --global gpg.ssh.program ssh-keygen \
-    && git config --global gpg.ssh.allowedSignersFile /root/.ssh/allowed_signers
-
+# git SSH commit signing — identity and signing config are set up at
+# runtime by the profile.d script (needs gh CLI + proxy-injected token).
 COPY git-signing.sh /etc/profile.d/git-signing.sh
+
 
 WORKDIR /workspace
 CMD ["bash"]
