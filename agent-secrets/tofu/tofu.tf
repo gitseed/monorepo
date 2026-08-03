@@ -47,13 +47,6 @@ data "infisical_secrets" "ouroboros" {
   folder_path  = "/"
 }
 
-# Read GITHUB_TOKEN from the agent project for the restapi provider.
-data "infisical_secrets" "agent" {
-  env_slug     = infisical_project_environment.global.slug
-  workspace_id = infisical_project.agent.id
-  folder_path  = "/"
-}
-
 provider "infisical" {
   auth = {
     aws_iam = {
