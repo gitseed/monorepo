@@ -7,6 +7,7 @@ services:
     environment:
       - OPENROUTER_API_KEY
       - GITHUB_TOKEN
+      - GITHUB_TOKEN_BASIC
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
     healthcheck:
@@ -27,6 +28,7 @@ services:
     links:
       - "proxy:openrouter.ai"
       - "proxy:api.github.com"
+      - "proxy:github.com"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
     cap_drop:
