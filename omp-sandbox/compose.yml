@@ -21,7 +21,7 @@ services:
     build:
       context: ./container
       dockerfile: sandbox.containerfile
-    secrets: [ca_cert]
+      secrets: [ca_cert]
     stdin_open: true
     tty: true
     links:
