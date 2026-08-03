@@ -16,6 +16,10 @@ terraform {
       source  = "hashicorp/local"
       version = "2.9.0"
     }
+    restapi = {
+      source  = "Mastercard/restapi"
+      version = "2.0.1"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"
@@ -52,4 +56,14 @@ provider "infisical" {
 
 provider "openrouter" {
   api_key = data.infisical_secrets.ouroboros.secrets.OPENROUTER_API_KEY.value
+}
+
+provider "restapi" {
+  uri                  = "https://api.github.com"
+  write_returns_object = true
+  id_attribute          = "id"
+  headers = {
+    Authorization = "Bearer ${data.infisical_secrets.agent.secrets.GITHUB_TOKEN.value}"
+    Accept        = "application/vnd.github+json"
+  }
 }

@@ -25,6 +25,8 @@ services:
       secrets: [ca_cert]
     stdin_open: true
     tty: true
+    secrets:
+      - git_signing_key
     links:
       - "proxy:openrouter.ai"
       - "proxy:api.github.com"
@@ -38,6 +40,9 @@ services:
 secrets:
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
+  git_signing_key:
+    environment: GIT_SIGNING_KEY
+
 # Shared network to enable shared memory.
 networks:
   default:
