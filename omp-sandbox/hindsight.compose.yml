@@ -13,7 +13,7 @@ services:
       # credentials proxy. Extraction is high-volume, so use a cheap model.
       HINDSIGHT_API_LLM_PROVIDER: openrouter
       HINDSIGHT_API_LLM_API_KEY: ${OPENROUTER_API_KEY:?infisical must provide OPENROUTER_API_KEY}
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash
+      HINDSIGHT_API_LLM_MODEL: deepseek/deepseek-v4-flash-0731
     volumes:
       - hindsight-data:/home/hindsight/.pg0
     networks:
