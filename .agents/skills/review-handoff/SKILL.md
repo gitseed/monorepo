@@ -7,10 +7,13 @@ description: Cold self-review before delivery; surface design alternatives as a 
 
 ## Cold adversarial pass (blocking)
 
-Re-read the full diff as the reviewer will. Look for: the thing
-they'd flag first; comments scrubbed while their code survived; stale
-cross-references; batch-edit typos; changes that do nothing. Minutes
-here save a full round-trip per catch.
+Re-read the full diff against the PR's base branch (e.g. `git diff
+main`) as the reviewer will — not just the files you touched in
+isolation. A clean additive diff against base is the goal; lines that
+vanished between base and your branch are regressions. Look for: the
+thing they'd flag first; comments scrubbed while their code survived;
+stale cross-references; batch-edit typos; changes that do nothing.
+Minutes here save a full round-trip per catch.
 
 ## Surface alternatives; don't serial-implement
 
