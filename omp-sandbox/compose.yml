@@ -34,3 +34,8 @@ services:
 secrets:
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
+# Shared network to enable shared memory.
+networks:
+  default:
+    external: true
+    name: omp-sandbox-net
