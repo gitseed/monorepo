@@ -16,9 +16,9 @@ terraform {
       source  = "hashicorp/local"
       version = "2.9.0"
     }
-    null = {
-      source  = "hashicorp/null"
-      version = "3.2.3"
+    restapi = {
+      source  = "Mastercard/restapi"
+      version = "~> 3.0.0"
     }
   }
   backend "s3" {
@@ -47,6 +47,13 @@ data "infisical_secrets" "ouroboros" {
   folder_path  = "/"
 }
 
+# Read GITHUB_TOKEN from the agent project for the restapi provider.
+data "infisical_secrets" "agent" {
+  env_slug     = infisical_project_environment.global.slug
+  workspace_id = infisical_project.agent.id
+  folder_path  = "/"
+}
+
 provider "infisical" {
   auth = {
     aws_iam = {
@@ -56,4 +63,14 @@ provider "infisical" {
 
 provider "openrouter" {
   api_key = data.infisical_secrets.ouroboros.secrets.OPENROUTER_API_KEY.value
+}
+
+provider "restapi" {
+  uri                  = "https://api.github.com"
+  write_returns_object = true
+  id_attribute          = "id"
+  headers = {
+    Authorization = "Bearer ${data.infisical_secrets.agent.secrets.GITHUB_TOKEN.value}"
+    Accept        = "application/vnd.github+json"
+  }
 }

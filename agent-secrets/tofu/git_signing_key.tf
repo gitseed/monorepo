@@ -13,43 +13,12 @@ resource "infisical_secret" "git_signing_key" {
   folder_path  = "/"
 }
 
-# The GitHub provider doesn't have an ssh_signing_key resource,
-# so register the public key via the REST API.
-resource "null_resource" "github_ssh_signing_key" {
-  triggers = {
-    public_key = tls_private_key.git_signing.public_key_openssh
-  }
-
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    environment = {
-      PUBLIC_KEY = tls_private_key.git_signing.public_key_openssh
-    }
-    command = <<-EOT
-      set -euo pipefail
-
-      # Delete any existing keys with the same title (idempotent re-apply).
-      existing=$(
-        curl -fsSL -H "Authorization: Bearer $${GITHUB_TOKEN}" \
-          https://api.github.com/user/ssh_signing_keys
-        | jq -r '.[] | select(.title == "gitseed-agent sandbox signing key") | .id'
-      )
-      for id in $${existing:-}; do
-        curl -fsSl -X DELETE \
-          -H "Authorization: Bearer $${GITHUB_TOKEN}" \
-          "https://api.github.com/user/ssh_signing_keys/$${id}"
-      done
-
-      # Register the new key.
-      payload=$(jq -n \
-        --arg title "gitseed-agent sandbox signing key" \
-        --arg key "$PUBLIC_KEY" \
-        '{title: $title, key: $key}')
-      curl -fsSL -X POST \
-        -H "Authorization: Bearer $${GITHUB_TOKEN}" \
-        -H "Accept: application/vnd.github+json" \
-        https://api.github.com/user/ssh_signing_keys \
-        -d "$payload"
-    EOT
-  }
+# The GitHub Terraform provider has no ssh_signing_key resource,
+# so use the REST API directly via Mastercard/restapi.
+resource "restapi_object" "github_ssh_signing_key" {
+  path = "/user/ssh_signing_keys"
+  data = jsonencode({
+    title = "gitseed-agent sandbox signing key"
+    key   = tls_private_key.git_signing.public_key_openssh
+  })
 }
