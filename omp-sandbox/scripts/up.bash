@@ -10,6 +10,11 @@ cd "$GIT_PROJECT_DIR"
 COMPOSE=(docker compose -f omp-sandbox/compose.yml)
 PROJECT=omp-sandbox-$$
 export GIT_PROJECT_DIR
+HINDSIGHT_COMPOSE=(docker compose -f omp-sandbox/hindsight.compose.yml)
+# Shared network so the per-session project can reach the stable memory service.
+docker network create omp-sandbox-net 2>/dev/null || true
+echo "starting agent memory service..."
+infisical run -- "${HINDSIGHT_COMPOSE[@]}" up -d --wait
 
 cleanup() {
     local status=$?

@@ -3,5 +3,7 @@ modelRoles:
 symbolPreset: nerd
 hideThinkingBlock: true
 memory:
-  backend: local
+  backend: hindsight
+hindsight:
+  apiUrl: http://hindsight:8888
 setupVersion: 1

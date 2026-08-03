@@ -34,3 +34,10 @@ services:
 secrets:
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
+# Shared with the stable omp-hindsight project (hindsight.compose.yml) so
+# the ephemeral per-session project can reach the memory service. External so
+# `compose down` never deletes it; created by scripts/up.bash.
+networks:
+  default:
+    external: true
+    name: omp-sandbox-net
