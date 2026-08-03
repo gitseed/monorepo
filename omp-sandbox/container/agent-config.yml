@@ -1,7 +1,6 @@
 modelRoles:
-  default: openrouter/moonshotai/kimi-k3
+  default: openrouter/moonshotai/kimi-k3:high
 symbolPreset: nerd
-defaultThinkingLevel: high
 hideThinkingBlock: true
 memory:
   backend: local
