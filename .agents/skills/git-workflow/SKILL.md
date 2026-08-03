@@ -6,18 +6,29 @@ description: Branch-per-task, commit as you go, push and PR when done — never 
 # Git workflow
 
 This is the only way to do repo work. Every task follows the same
-flow: branch, commit as you go, push and PR.
+flow: worktree, commit as you go, push and PR.
+
+## Use a worktree for isolation
+
+Multiple agents may work on the same repo simultaneously. Creating a
+branch with `git switch` mutates the shared working directory — if two
+agents do this concurrently, they clobber each other's branch state.
+Use a git worktree instead so each task gets its own working directory:
+
+```
+git fetch && git worktree add -b <branch> ~/.omp/wt/<branch> origin/main
+cd ~/.omp/wt/<branch>
+```
+
+`git worktree add` creates a new branch from `origin/main` in a separate
+directory. The main checkout is untouched — other agents can work in
+parallel without conflict. Work entirely inside the worktree directory.
 
 ## Never commit to main
 
-`main` is read-only. All work happens on a feature branch checked out
-from the latest `main`. Fetch first, then branch:
-
-```
-git fetch && git switch --no-track -c <branch> origin/main
-```
-
-`--no-track` avoids setting up tracking until you push.
+`main` is read-only. All work happens on a feature branch in a worktree
+checked out from the latest `main`. Fetch first, then create the worktree
+as shown above.
 
 ## Never amend a commit
 
@@ -39,10 +50,22 @@ When the work is complete and verified:
 2. `gh pr create --base main --title "<title>" --body "<description>"`
 3. The PR body should describe what changed and why.
 
+## Clean up the worktree
+
+After the PR is merged or closed, remove the worktree:
+
+```
+cd <anywhere else> && git worktree remove ~/.omp/wt/<branch>
+```
+
+`omp worktree list` shows all agent-managed worktrees; `omp worktree clear`
+reclaims orphaned ones.
 
 ## Summary
 
-1. `git fetch && git switch --no-track -c <branch> origin/main` — before any work
-2. `git add` / `git commit` — as you go, not once at the end
-3. `git push` + `gh pr create` — when done
-4. Never `git commit` on `main`. Never `git commit --amend`.
+1. `git fetch && git worktree add -b <branch> ~/.omp/wt/<branch> origin/main` — before any work
+2. `cd ~/.omp/wt/<branch>` — work inside the worktree
+3. `git add` / `git commit` — as you go, not once at the end
+4. `git push` + `gh pr create` — when done
+5. `git worktree remove ~/.omp/wt/<branch>` — after merge
+6. Never `git commit` on `main`. Never `git commit --amend`.
