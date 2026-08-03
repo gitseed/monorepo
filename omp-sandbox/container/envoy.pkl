@@ -30,7 +30,7 @@ local upstreams: Listing<Upstream> = new {
   }
   new {
     // git's smart-HTTP endpoints reject Bearer; they want Basic x-access-token.
-    // The proxy entrypoint derives GITHUB_TOKEN_BASIC from GITHUB_TOKEN.
+    // Tofu derives GITHUB_TOKEN_BASIC from the PAT at provisioning time.
     host = "github.com"
     name = "github_git"
     secret = "github_token_basic"

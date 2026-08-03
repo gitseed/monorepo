@@ -17,7 +17,3 @@ RUN apt-get update \
     && setcap 'cap_net_bind_service=+ep' /usr/local/bin/envoy \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=render --chmod=0444 /envoy.yaml /etc/envoy/envoy.yaml
-COPY --chmod=0755 proxy-entrypoint.bash /proxy-entrypoint.bash
-ENTRYPOINT ["/proxy-entrypoint.bash"]
-# Setting ENTRYPOINT clears the inherited CMD; restate the base image's.
-CMD ["envoy", "-c", "/etc/envoy/envoy.yaml"]
