@@ -20,7 +20,12 @@ local upstreams: Listing<Upstream> = new {
     secret = "openrouter_api_key"
     env = "OPENROUTER_API_KEY"
   }
-}
+  new {
+    host = "api.github.com"
+    name = "github"
+    secret = "github_token"
+    env = "GITHUB_TOKEN"
+  }
 
 /// One cert covers every chain: it carries a SAN per proxied hostname.
 local downstreamTls = new Dynamic {
