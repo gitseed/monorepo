@@ -39,7 +39,6 @@ When the work is complete and verified:
 2. `gh pr create --base main --title "<title>" --body "<description>"`
 3. The PR body should describe what changed and why.
 
-Never merge your own PR without review unless explicitly instructed.
 
 ## Summary
 
