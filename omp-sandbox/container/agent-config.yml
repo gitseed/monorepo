@@ -1,5 +1,6 @@
 modelRoles:
   default: openrouter/z-ai/glm-5.2:high
+  smol: openrouter/deepseek/deepseek-v4-flash-0731
 symbolPreset: nerd
 hideThinkingBlock: true
 memory:
