@@ -85,6 +85,9 @@ ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 
+# OpenRouter Advisor server-tool extension — auto-discovered by OMP from the extensions dir.
+COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
+
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
 COPY entrypoint.sh /entrypoint.sh
