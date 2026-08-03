@@ -6,7 +6,7 @@
 // Requires: OPENROUTER_API_KEY env var (set by the sandbox; the credentials
 // proxy injects the real key). Override the model with MORPH_MODEL.
 
-import type { ExtensionAPI } from "@earendel-works/pi-coding-agent"
+import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs"
 import { resolve, isAbsolute, join } from "node:path"
 import { tmpdir } from "node:os"
@@ -19,8 +19,6 @@ const MAX_FILE_BYTES = 70_000
 
 export default function (pi: ExtensionAPI) {
   const { z } = pi.zod
-
-  pi.setLabel("Morph Fast Apply")
 
   pi.registerTool({
     name: "morph_edit",
@@ -53,7 +51,9 @@ export default function (pi: ExtensionAPI) {
       instruction: z.string().describe("First-person description of what you're changing"),
       update: z.string().describe("Partial edit: only changed code with `// ... existing code ...` markers"),
     }),
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, _params, signal, onUpdate, ctx) {
+      // Static<TParams> doesn't narrow for Zod schemas (library limitation).
+      const params = _params as { path: string; instruction: string; update: string }
       const filePath = isAbsolute(params.path)
         ? params.path
         : resolve(ctx.cwd, params.path)
@@ -62,9 +62,9 @@ export default function (pi: ExtensionAPI) {
       let oldContent: string
       try {
         oldContent = readFileSync(filePath, "utf-8")
-      } catch {
+      } catch (err) {
         return {
-          content: [{ type: "text", text: `Error: file not found: ${params.path}` }],
+          content: [{ type: "text", text: `Error reading ${params.path}: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         }
       }
@@ -96,12 +96,14 @@ export default function (pi: ExtensionAPI) {
           headers: {
             Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/can1357/oh-my-pi",
+            "HTTP-Referer": "https://github.com/gitseed/monorepo",
             "X-Title": "OMP Morph Extension",
           },
           body: JSON.stringify({
             model: MORPH_MODEL,
             messages: [{ role: "user", content: prompt }],
+            // Morph must reproduce the whole file, so size max_tokens for it.
+            max_tokens: 8192,
           }),
           signal: signal ?? undefined,
         })
@@ -123,14 +125,39 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>
+      let data: { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> }
+      try {
+        data = (await response.json()) as typeof data
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Error parsing Morph response: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        }
       }
-      const newContent = data.choices?.[0]?.message?.content
+
+      const choice = data.choices?.[0]
+      const newContent = choice?.message?.content
 
       if (!newContent || typeof newContent !== "string") {
         return {
           content: [{ type: "text", text: "Error: Morph returned no content" }],
+          isError: true,
+        }
+      }
+
+      // Guard against truncated output — never write a partial file.
+      if (choice?.finish_reason !== "stop") {
+        return {
+          content: [{ type: "text", text: `Error: Morph output was truncated (finish_reason: ${choice?.finish_reason ?? "unknown"}). File left unchanged.` }],
+          isError: true,
+        }
+      }
+
+      // Defense in depth: some models wrap output in markdown fences.
+      const stripped = newContent.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "")
+      if (stripped !== newContent) {
+        return {
+          content: [{ type: "text", text: `Error: Morph output contains markdown fences. File left unchanged. Raw output:\n${newContent.slice(0, 500)}` }],
           isError: true,
         }
       }

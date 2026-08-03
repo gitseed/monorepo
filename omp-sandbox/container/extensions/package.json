@@ -1,0 +1,8 @@
+{
+  "name": "omp-extensions",
+  "private": true,
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "^17.2.7",
+    "typescript": "^7.0.2"
+  }
+}
