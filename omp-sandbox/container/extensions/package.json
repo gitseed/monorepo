@@ -1,8 +1,12 @@
 {
   "name": "omp-extensions",
   "private": true,
+  "description": "Type checking infrastructure for OMP sandbox extensions",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
-    "@oh-my-pi/pi-coding-agent": "^17.2.7",
-    "typescript": "^7.0.2"
+    "@oh-my-pi/pi-coding-agent": "*",
+    "typescript": "*"
   }
 }
