@@ -11,6 +11,8 @@ local class Upstream {
   secret: String
   /// Environment variable the credential arrives in.
   env: String
+  /// Authorization scheme prefix for the injected header.
+  prefix: String = "Bearer "
 }
 
 local upstreams: Listing<Upstream> = new {
@@ -27,10 +29,13 @@ local upstreams: Listing<Upstream> = new {
     env = "GITHUB_TOKEN"
   }
   new {
+    // git's smart-HTTP endpoints reject Bearer; they want Basic x-access-token.
+    // The proxy entrypoint derives GITHUB_TOKEN_BASIC from GITHUB_TOKEN.
     host = "github.com"
     name = "github_git"
-    secret = "github_token"
-    env = "GITHUB_TOKEN"
+    secret = "github_token_basic"
+    env = "GITHUB_TOKEN_BASIC"
+    prefix = "Basic "
   }
 }
 
@@ -92,7 +97,7 @@ local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
         ["@type"] = "type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic"
         credential { name = u.secret }
         header = "Authorization"
-        header_value_prefix = "Bearer "
+        header_value_prefix = u.prefix
       }
     }
   }
