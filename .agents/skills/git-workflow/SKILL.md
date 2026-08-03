@@ -11,10 +11,14 @@ flow: branch, commit as you go, push and PR.
 ## Never commit to main
 
 `main` is read-only. All work happens on a feature branch checked out
-from the latest `main`. If you are on `main`, `git checkout -b
-<branch>` before touching anything.
+from the latest `main`. Fetch first, then branch:
 
-Branch names: `feat/<short-description>`, `fix/<short-description>`,
+```
+git fetch && git switch --no-track -c <branch> origin/main
+```
+
+`--no-track` avoids setting up tracking until you push. Branch names:
+`feat/<short-description>`, `fix/<short-description>`,
 or `skill/<short-description>`.
 
 ## Never amend a commit
@@ -45,7 +49,7 @@ Never merge your own PR without review unless explicitly instructed.
 
 ## Summary
 
-1. `git checkout -b <branch>` — before any work
+1. `git fetch && git switch --no-track -c <branch> origin/main` — before any work
 2. `git add` / `git commit` — as you go, not once at the end
 3. `git push` + `gh pr create` — when done
 4. Never `git commit` on `main`. Never `git commit --amend`.
