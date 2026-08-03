@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Branch-per-task, commit as you go, push and PR when done — never commit to main, never amend a commit. Load before any work on the repo.
+description: Branch-per-task, commit as you go, push and PR when done — never commit to main, never amend, never force push. Load before any work on the repo.
 ---
 
 # Git workflow
@@ -36,6 +36,30 @@ Amending rewrites history and hides what actually happened. If a
 commit is wrong, add a new commit that corrects it. The history is a
 log, not a narrative — messy but truthful beats clean but rewritten.
 
+## Never force push
+
+`git push --force` rewrites shared history. It discards commits other
+people may have based work on and can leave a remote branch pointing
+somewhere no one expects. If a push is rejected, the remote has commits
+you don't — fetch and merge them in as a new commit instead of
+overwriting. If you need to discard local commits, do it locally; never
+overwrite the remote branch.
+
+## Merge instead of rebase
+
+Rebasing rewrites history — the same problem as amending. When you need
+to incorporate changes from `main` (or any branch) into your feature
+branch, merge them:
+
+```
+git fetch && git merge origin/main
+```
+
+A merge commit preserves the truth of what happened and when. A rebase
+replays your commits on top of the new base and rewrites their hashes,
+which is exactly the kind of history rewriting the rest of this skill
+forbids.
+
 ## Commit as you go
 
 Commit frequently — each logical unit of work gets its own commit.
@@ -68,4 +92,5 @@ reclaims orphaned ones.
 3. `git add` / `git commit` — as you go, not once at the end
 4. `git push` + `gh pr create` — when done
 5. `git worktree remove ~/.omp/wt/<branch>` — after merge
-6. Never `git commit` on `main`. Never `git commit --amend`.
+6. Never `git commit` on `main`. Never `git commit --amend`. Never `git push --force`.
+7. Merge instead of rebase.
