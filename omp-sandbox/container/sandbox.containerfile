@@ -84,6 +84,9 @@ ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
+# Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
+RUN mkdir -p /root/.omp/agent/extensions
+COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
