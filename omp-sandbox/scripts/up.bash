@@ -20,10 +20,25 @@ cleanup() {
     local status=$?
     if ! "${COMPOSE[@]}" -p "$PROJECT" down --timeout 3 2>&1; then
         echo "WARNING: compose down failed -- the session proxy may still" >&2
-        echo "         be running with injected credentials. Reap by label:" >&2
+        echo "         running with injected credentials. Reap by label:" >&2
         echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
         status=1
     fi
+
+    # Stop the shared memory service when the last sandbox exits. Count other
+    # live sandbox projects (named omp-sandbox-<pid>); if none remain, take
+    # down the memory stack. The volume is preserved (no --volumes), so the
+    # next session brings memory back with history intact.
+    local projects
+    if ! projects=$(docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null); then
+        echo "WARNING: could not enumerate containers; leaving memory service running" >&2
+        return $status
+    fi
+    if printf '%s\n' "$projects" | grep -q '^omp-sandbox-[0-9][0-9]*$'; then
+        return $status   # another session is still active
+    fi
+    "${HINDSIGHT_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
+    docker network rm omp-sandbox-net 2>/dev/null || true
     return $status
 }
 trap cleanup EXIT
