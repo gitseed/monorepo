@@ -20,7 +20,7 @@ cleanup() {
     local status=$?
     if ! "${COMPOSE[@]}" -p "$PROJECT" down --timeout 3 2>&1; then
         echo "WARNING: compose down failed -- the session proxy may still" >&2
-        echo "         running with injected credentials. Reap by label:" >&2
+        echo "         be running with injected credentials. Reap by label:" >&2
         echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
         status=1
     fi
