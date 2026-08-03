@@ -17,9 +17,7 @@ from the latest `main`. Fetch first, then branch:
 git fetch && git switch --no-track -c <branch> origin/main
 ```
 
-`--no-track` avoids setting up tracking until you push. Branch names:
-`feat/<short-description>`, `fix/<short-description>`,
-or `skill/<short-description>`.
+`--no-track` avoids setting up tracking until you push.
 
 ## Never amend a commit
 
