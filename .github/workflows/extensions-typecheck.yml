@@ -1,0 +1,29 @@
+name: Extensions Typecheck
+
+on:
+  push:
+    paths:
+      - "omp-sandbox/container/extensions/**"
+  pull_request:
+    paths:
+      - "omp-sandbox/container/extensions/**"
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omp-sandbox/container/extensions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install
+      - name: Typecheck
+        run: |
+          # tsc errors with TS18003 if no .ts files match. Skip in that case.
+          if ls *.ts >/dev/null 2>&1; then
+            bun x tsc --noEmit
+          else
+            echo "No .ts extension files found — skipping typecheck."
+          fi
