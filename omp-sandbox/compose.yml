@@ -6,6 +6,7 @@ services:
       dockerfile: proxy.containerfile
     environment:
       - OPENROUTER_API_KEY
+      - GITHUB_TOKEN
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
     healthcheck:
@@ -20,11 +21,12 @@ services:
     build:
       context: ./container
       dockerfile: sandbox.containerfile
-      secrets: [ca_cert]
+    secrets: [ca_cert]
     stdin_open: true
     tty: true
     links:
       - "proxy:openrouter.ai"
+      - "proxy:api.github.com"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
     cap_drop:
