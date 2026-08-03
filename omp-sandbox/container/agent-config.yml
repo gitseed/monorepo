@@ -1,5 +1,5 @@
 modelRoles:
-  default: openrouter/moonshotai/kimi-k3:high
+  default: openrouter/z-ai/glm-5.2:high
 symbolPreset: nerd
 hideThinkingBlock: true
 memory:
