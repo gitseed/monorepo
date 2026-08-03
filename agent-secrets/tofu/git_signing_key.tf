@@ -15,14 +15,6 @@ resource "infisical_secret" "git_signing_key" {
 
 # The GitHub Terraform provider has no ssh_signing_key resource,
 # so use the REST API directly via Mastercard/restapi.
-#
-# GitHub's ssh_signing_keys API is POST/GET/DELETE only — no PUT.
-# ignore_all_server_changes stops Read from writing server-added
-# response fields (created_at, id, etc.) into the data attribute,
-# which would otherwise cause drift and a doomed PUT on the next plan.
-# force_new makes any change to the key material recreate the resource
-# (DELETE + POST) instead of attempting an unsupported PUT.
-
 locals {
   signing_key_data = jsonencode({
     title = "gitseed-agent sandbox signing key"
@@ -33,7 +25,6 @@ locals {
 resource "restapi_object" "github_ssh_signing_key" {
   path = "/user/ssh_signing_keys"
   data = local.signing_key_data
-
   ignore_all_server_changes = true
   force_new                 = [local.signing_key_data]
 }
