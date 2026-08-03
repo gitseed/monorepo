@@ -85,10 +85,10 @@ ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 
-# git SSH commit signing — identity and signing config are set up at
-# runtime by the profile.d script (needs gh CLI + proxy-injected token).
-COPY git-signing.sh /etc/profile.d/git-signing.sh
-
+# git SSH commit signing — the entrypoint sets up identity and signing
+# config before handing off to the main process (needs gh CLI + proxy-injected token).
+COPY entrypoint.sh /entrypoint.sh
 
 WORKDIR /workspace
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
