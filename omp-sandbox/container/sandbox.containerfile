@@ -15,6 +15,11 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         tar \
         unzip \
         which \
+        bat \
+        eza \
+        fzf \
+        hexyl \
+        yq \
     && dnf clean all
 
 # Bun instead of dnf's nodejs, which is much larger.
@@ -47,6 +52,24 @@ RUN rtk init -g --agent pi --auto-patch \
     && cp /root/.pi/agent/extensions/rtk.ts /root/.omp/agent/extensions/rtk.ts \
     && rm -rf /root/.pi
 
+
+# sd — intuitive sed replacement (not in Fedora repos).
+ARG SD_VERSION=1.1.0
+ARG SD_SHA256=ec8c93c0533ff21f4851d11566808d4082544baf063d9b96ea77c27e98b7cd99
+RUN curl -fsSL -o /tmp/sd.tar.gz \
+        "https://github.com/chmln/sd/releases/download/v${SD_VERSION}/sd-v${SD_VERSION}-aarch64-unknown-linux-musl.tar.gz" \
+    && echo "${SD_SHA256}  /tmp/sd.tar.gz" | sha256sum --check \
+    && tar -xzf /tmp/sd.tar.gz -C /tmp \
+    && install -m 0755 /tmp/sd-v${SD_VERSION}-aarch64-unknown-linux-musl/sd /usr/local/bin/sd \
+    && rm -rf /tmp/sd*
+
+# pkl — Apple Pkl CLI config language.
+ARG PKL_VERSION=0.32.1
+ARG PKL_SHA256=a76d2dd47da435a8f911b0347373f47c7e59ea54fb75ff846d20b8df10dba058
+RUN curl -fsSL -o /usr/local/bin/pkl \
+        "https://github.com/apple/pkl/releases/download/${PKL_VERSION}/pkl-linux-aarch64" \
+    && echo "${PKL_SHA256}  /usr/local/bin/pkl" | sha256sum --check \
+    && chmod 0755 /usr/local/bin/pkl
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
     cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
     && update-ca-trust extract
@@ -59,4 +82,5 @@ ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 
+WORKDIR /workspace
 CMD ["bash"]
