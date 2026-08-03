@@ -1,18 +1,11 @@
-# Long-lived agent memory service, deliberately NOT part of the per-session
-# compose project in compose.yml: up.bash names that project omp-sandbox-$$
-# and tears it down on exit, which would wipe any project-scoped volume.
-# This stack owns the persistent memory volume and shares omp-sandbox-net
-# with the ephemeral sessions. Bring it down only via scripts/down.bash.
+# Long-lived agent memory service.
 name: omp-hindsight
 services:
   hindsight:
     image: ghcr.io/vectorize-io/hindsight:0.8
     environment:
-      # Real key arrives via infisical at `up` time and never enters the
-      # sandbox container; this service sits in the same trust tier as the
-      # credentials proxy. Extraction is high-volume, so use a cheap model.
       HINDSIGHT_API_LLM_PROVIDER: openrouter
-      HINDSIGHT_API_LLM_API_KEY: ${OPENROUTER_API_KEY:?infisical must provide OPENROUTER_API_KEY}
+      HINDSIGHT_API_LLM_API_KEY: ${OPENROUTER_API_KEY}
       HINDSIGHT_API_LLM_MODEL: deepseek/deepseek-v4-flash-0731
     volumes:
       - hindsight-data:/home/hindsight/.pg0
@@ -24,12 +17,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 24
-      # First boot initialises embedded pg0; preloaded ML models make this
-      # slower than a typical container start.
+      # First boot is slow.
       start_period: 60s
-    # Uncomment to browse the control-plane UI from the host.
-    # ports:
-    #   - "127.0.0.1:9999:9999"
 volumes:
   hindsight-data:
 networks:

@@ -25,10 +25,7 @@ cleanup() {
         status=1
     fi
 
-    # Stop the shared memory service when the last sandbox exits. Count other
-    # live sandbox projects (named omp-sandbox-<pid>); if none remain, take
-    # down the memory stack. The volume is preserved (no --volumes), so the
-    # next session brings memory back with history intact.
+    # Stop the shared memory service when the last sandbox exits.
     local projects
     if ! projects=$(docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null); then
         echo "WARNING: could not enumerate containers; leaving memory service running" >&2
