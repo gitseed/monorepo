@@ -40,7 +40,8 @@ main() {
             return $status   # another session is still active
         fi
         "${HINDSIGHT_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
-        docker network rm omp-sandbox-net 2>/dev/null || true
+        # Deleting the network is slow and not worth, assuming it doesn't nag at you to have it persist.
+        # docker network rm omp-sandbox-net 2>/dev/null || true
         return $status
     }
     trap cleanup EXIT
