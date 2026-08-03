@@ -31,10 +31,6 @@ Commit frequently — each logical unit of work gets its own commit.
 The frequency is your call, but a single PR should never be one giant
 commit unless the change is genuinely atomic.
 
-Good commit messages:
-- imperative mood ("Add", "Fix", "Remove")
-- one line summarizing the change, optional blank line then body
-
 ## Push and open a PR when done
 
 When the work is complete and verified:
