@@ -26,6 +26,12 @@ local upstreams: Listing<Upstream> = new {
     secret = "github_token"
     env = "GITHUB_TOKEN"
   }
+  new {
+    host = "github.com"
+    name = "github_git"
+    secret = "github_token"
+    env = "GITHUB_TOKEN"
+  }
 }
 
 /// One cert covers every chain: it carries a SAN per proxied hostname.
@@ -187,10 +193,10 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
 }
 
 static_resources {
-  secrets = upstreams.toList().map((u) -> new Dynamic {
-    name = u.secret
-    generic_secret { secret { environment_variable = u.env } }
-  })
+secrets = upstreams.toList().distinctBy((u) -> u.secret).map((u) -> new Dynamic {
+  name = u.secret
+  generic_secret { secret { environment_variable = u.env } }
+})
 
   listeners {
     new {
