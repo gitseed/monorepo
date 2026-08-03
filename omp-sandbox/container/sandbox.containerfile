@@ -31,6 +31,22 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
 RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
         | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
 
+# RTK — CLI proxy that compresses bash output for LLM context.
+ARG RTK_VERSION=0.44.2
+ARG RTK_SHA256=5cd3f7fa2697faf9e5b77a10ce4e699006e02d4752d792f06550697eb4b8e8a9
+RUN curl -fsSL -o /tmp/rtk.tar.gz \
+        "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-aarch64-unknown-linux-gnu.tar.gz" \
+    && echo "${RTK_SHA256}  /tmp/rtk.tar.gz" | sha256sum --check \
+    && tar -xzf /tmp/rtk.tar.gz -C /usr/local/bin/ \
+    && chmod 0755 /usr/local/bin/rtk \
+    && rm -f /tmp/rtk.tar.gz
+
+# Install the RTK Pi extension and relocate it to the omp extensions directory.
+RUN rtk init -g --agent pi --auto-patch \
+    && mkdir -p /root/.omp/agent/extensions \
+    && cp /root/.pi/agent/extensions/rtk.ts /root/.omp/agent/extensions/rtk.ts \
+    && rm -rf /root/.pi
+
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
     cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
     && update-ca-trust extract
