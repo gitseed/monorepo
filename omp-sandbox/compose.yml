@@ -24,11 +24,8 @@ services:
       secrets: [ca_cert]
     stdin_open: true
     tty: true
-    links:
-      - "proxy:openrouter.ai"
-      - "proxy:api.github.com"
-    volumes:
-      - "${GIT_PROJECT_DIR:-..}:/workspace"
+    secrets:
+      - git_signing_key
     cap_drop:
     - NET_RAW
     - NET_ADMIN
@@ -36,6 +33,9 @@ services:
 secrets:
   ca_cert:
     environment: CREDENTIALS_PROXY_CA_CERT
+  git_signing_key:
+    environment: GIT_SIGNING_KEY
+
 # Shared network to enable shared memory.
 networks:
   default:
