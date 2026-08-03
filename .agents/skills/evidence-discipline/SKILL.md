@@ -1,6 +1,6 @@
 ---
 name: evidence-discipline
-description: Prove a diagnosis against ground truth before fixing, and make the test harness match reality before trusting its output. Load before bug fixes, debugging, or explaining any failure.
+description: Prove a diagnosis against ground truth before fixing, make the test harness match reality before trusting its output, and run the cheapest checker on whatever you edited before claiming done. Load before bug fixes, debugging, or explaining any failure.
 ---
 
 # Evidence discipline
@@ -30,6 +30,14 @@ decisions load on it.
   production path? If not, fix the harness first.
 - Don't build a bespoke harness just to test a helper — that's a
   second, unbudgeted project. Test the real path once.
+
+## "Done" includes the checker
+
+Every edited file has a near-free validity check — `bash -n`, `pkl
+eval`, the compiler, the linter. Run it before declaring done or
+committing; a diff that was never checked is a claim without
+evidence. "It renders later in the build" doesn't count: that
+validates the image, not the commit.
 
 ## Notice when the loop stops converging
 
