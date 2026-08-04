@@ -3,7 +3,7 @@
   "disabled": false,
   "description": "Consult Fable for code review guidance. Only use this tool when the user explicitly asks you to consult Fable.",
   "label": "Consult Fable",
-  "model": "anthropic/claude-opus-5",
+  "model": "anthropic/claude-fable-latest",
   "fallback_models": [],
   "timeout_ms": 180000,
   "idle_timeout_ms": 30000,
