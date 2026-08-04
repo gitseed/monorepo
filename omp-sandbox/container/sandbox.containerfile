@@ -85,6 +85,7 @@ ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
+COPY APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
 COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
