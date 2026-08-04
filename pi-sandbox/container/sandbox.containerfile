@@ -22,6 +22,8 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         hexyl \
         yq \
         emacs-nox \
+        ripgrep \
+        fd-find \
     && dnf clean all
 
 # Bun instead of dnf's nodejs, which is much larger.
