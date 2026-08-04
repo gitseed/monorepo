@@ -74,9 +74,10 @@ When the work is complete and verified:
 2. `gh pr create --base main --title "<title>" --body "<description>"`
 3. The PR body should describe what changed and why.
 
-## Clean up the worktree
+## Release the worktree after opening the PR
 
-After the PR is merged or closed, remove the worktree:
+Once the PR is open, release the worktree so a human can check out the
+branch locally:
 
 ```
 cd <anywhere else> && git worktree remove ~/.omp/wt/<branch>
@@ -91,6 +92,6 @@ reclaims orphaned ones.
 2. `cd ~/.omp/wt/<branch>` — work inside the worktree
 3. `git add` / `git commit` — as you go, not once at the end
 4. `git push` + `gh pr create` — when done
-5. `git worktree remove ~/.omp/wt/<branch>` — after merge
+5. `git worktree remove ~/.omp/wt/<branch>` — after the PR is open, so a human can check out locally
 6. Never `git commit` on `main`. Never `git commit --amend`. Never `git push --force`.
 7. Merge instead of rebase.
