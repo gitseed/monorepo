@@ -1,0 +1,9 @@
+{
+  "disabled": false,
+  "model": "qwen/qwen3.8-max",
+  "max_tool_calls": 5,
+  "instructions": null,
+  "forward_transcript": false,
+  "max_completion_tokens": null,
+  "temperature": null
+}
