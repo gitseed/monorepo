@@ -2,8 +2,10 @@
   "disabled": false,
   "model": "qwen/qwen3.8-max",
   "fallback_models": ["anthropic/claude-opus-5"],
-  "timeout_ms": 60000,
+  "timeout_ms": 180000,
+  "idle_timeout_ms": 30000,
   "instructions": null,
-  "max_completion_tokens": null,
-  "temperature": null
+  "max_completion_tokens": 2000,
+  "temperature": null,
+  "reasoning": { "effort": "medium" }
 }

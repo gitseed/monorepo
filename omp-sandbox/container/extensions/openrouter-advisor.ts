@@ -1,10 +1,10 @@
 // OpenRouter Advisor client-side tool extension for OMP.
 //
 // Lets the agent consult a stronger advisor model mid-generation —
-// pull-based, zero cost on trivial turns. The execute handler POSTs
-// directly to OpenRouter's chat/completions endpoint with the advisor
-// model, so the call has a hard timeout and clean fallback that the
-// server-tool design cannot provide.
+// pull-based, zero cost on trivial turns. The execute handler streams
+// from OpenRouter's chat/completions endpoint, so a stalled advisor is
+// detected by silence (idle timeout) rather than a flat deadline that
+// false-fires on slow-but-healthy reasoning models.
 //
 // Configuration:
 //   A JSON config file sits next to this extension at
@@ -17,7 +17,7 @@
 
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 
 const ADVISOR_TOOL_NAME = "openrouter_advisor";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -27,20 +27,27 @@ interface AdvisorConfig {
   disabled: boolean;
   model: string;
   fallback_models: string[];
+  /** Total wall-clock cap for one consultation. */
   timeout_ms: number;
+  /** Max silence between stream chunks before the advisor is considered stalled. */
+  idle_timeout_ms: number;
   instructions: string | null;
   max_completion_tokens: number | null;
   temperature: number | null;
+  /** OpenRouter unified reasoning config, e.g. { "effort": "medium" }. */
+  reasoning: Record<string, unknown> | null;
 }
 
 const DEFAULTS: AdvisorConfig = {
   disabled: false,
   model: "qwen/qwen3.8-max",
   fallback_models: [],
-  timeout_ms: 60_000,
+  timeout_ms: 180_000,
+  idle_timeout_ms: 30_000,
   instructions: null,
-  max_completion_tokens: null,
+  max_completion_tokens: 2000,
   temperature: null,
+  reasoning: null,
 };
 
 /** Read `openrouter-advisor.json` next to this extension and merge over the hardcoded defaults. */
@@ -62,6 +69,11 @@ function applyEnvOverrides(cfg: AdvisorConfig): AdvisorConfig {
   return cfg;
 }
 
+interface StreamDelta {
+  choices?: Array<{ delta?: { content?: string } }>;
+  error?: { message?: string };
+}
+
 export default function (pi: ExtensionAPI) {
   const cfg = applyEnvOverrides(loadConfig(pi.logger));
 
@@ -71,7 +83,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.logger?.info(
-    `[advisor] loaded — model=${cfg.model} timeout=${cfg.timeout_ms}ms` +
+    `[advisor] loaded — model=${cfg.model} timeout=${cfg.timeout_ms}ms idle=${cfg.idle_timeout_ms}ms` +
       (cfg.fallback_models.length ? ` fallbacks=${cfg.fallback_models.join(",")}` : ""),
   );
 
@@ -87,9 +99,15 @@ export default function (pi: ExtensionAPI) {
         .string()
         .describe("What you need advice on. Describe the decision, problem, or verification you need help with."),
     }),
-    async execute(_toolCallId: string, params: { prompt: string }, signal?: AbortSignal) {
+    async execute(
+      _toolCallId: string,
+      params: { prompt: string },
+      signal?: AbortSignal,
+      onUpdate?: (update: { content: Array<{ type: "text"; text: string }> }) => void,
+    ) {
       const body: Record<string, unknown> = {
         model: cfg.model,
+        stream: true,
         messages: [
           {
             role: "system",
@@ -103,20 +121,33 @@ export default function (pi: ExtensionAPI) {
 
       if (cfg.fallback_models.length > 0) {
         body.models = [cfg.model, ...cfg.fallback_models];
-        body.model = undefined;
+        delete body.model;
       }
 
       if (cfg.max_completion_tokens != null) body.max_completion_tokens = cfg.max_completion_tokens;
       if (cfg.temperature != null) body.temperature = cfg.temperature;
+      if (cfg.reasoning != null) body.reasoning = cfg.reasoning;
 
-      // Combine the framework-provided abort signal with a hard timeout so an
-      // unavailable advisor model becomes a clean error, not a hang.
-      const timeoutSignal = AbortSignal.timeout(cfg.timeout_ms);
-      const combinedSignal = signal
-        ? AbortSignal.any([signal, timeoutSignal])
-        : timeoutSignal;
+      // Three ways out: framework abort, total cap, or idle timeout. The idle
+      // timer resets on every received chunk, so a slow-but-streaming advisor
+      // is never killed while a wedged one dies after idle_timeout_ms.
+      const totalSignal = AbortSignal.timeout(cfg.timeout_ms);
+      const idleController = new AbortController();
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      const resetIdle = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => idleController.abort(), cfg.idle_timeout_ms);
+      };
+      const signals = [totalSignal, idleController.signal];
+      if (signal) signals.push(signal);
+      const combinedSignal = AbortSignal.any(signals);
+
+      let advice = "";
 
       try {
+        onUpdate?.({ content: [{ type: "text", text: `Consulting ${cfg.model}...` }] });
+        resetIdle();
+
         const res = await fetch(OPENROUTER_URL, {
           method: "POST",
           headers: {
@@ -142,42 +173,101 @@ export default function (pi: ExtensionAPI) {
           };
         }
 
-        const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-
-        // Handle routing-fallback responses — extract text from the first choice.
-        if (data?.choices?.[0]?.message?.content) {
+        if (!res.body) {
           return {
-            content: [{ type: "text", text: data.choices[0].message!.content }],
+            content: [{ type: "text", text: "[advisor] Empty response body. Proceed with your own judgment." }],
+            isError: true,
           };
         }
 
-        return {
-          content: [
-            { type: "text", text: `[advisor] Unexpected response shape. Proceed with your own judgment.` },
-          ],
-          isError: true,
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        // SSE parse: `data: {json}` lines carry deltas, `: ...` comment lines
+        // are OpenRouter keepalives, `data: [DONE]` ends the stream. Any
+        // received chunk — keepalives included — resets the idle timer.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let lastUpdate = 0;
+        let done = false;
 
-        if (msg === "The operation was aborted" || msg === "The user aborted a request" || msg === "The operation was timed out") {
+        while (!done) {
+          const { done: eof, value } = await reader.read();
+          if (eof) break;
+          resetIdle();
+          buf += decoder.decode(value, { stream: true });
+
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) !== -1) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line || line.startsWith(":") || !line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (payload === "[DONE]") {
+              done = true;
+              break;
+            }
+            let parsed: StreamDelta;
+            try {
+              parsed = JSON.parse(payload);
+            } catch {
+              continue;
+            }
+            if (parsed.error) {
+              throw new Error(`OpenRouter stream error: ${parsed.error.message ?? JSON.stringify(parsed.error)}`);
+            }
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) advice += delta;
+          }
+
+          const now = Date.now();
+          if (advice && now - lastUpdate > 2000) {
+            lastUpdate = now;
+            onUpdate?.({
+              content: [{ type: "text", text: `Streaming advice from ${cfg.model}... (${advice.length} chars)` }],
+            });
+          }
+        }
+
+        if (!advice) {
           return {
             content: [
-              {
-                type: "text",
-                text: `[advisor] Timed out after ${cfg.timeout_ms}ms. Proceed with your own judgment.`,
-              },
+              { type: "text", text: "[advisor] Stream ended with no content. Proceed with your own judgment." },
             ],
             isError: true,
           };
         }
 
         return {
+          content: [{ type: "text", text: advice }],
+          details: { model: cfg.model },
+        };
+      } catch (err) {
+        if (signal?.aborted) {
+          return { content: [{ type: "text", text: "Cancelled" }] };
+        }
+        // Partial advice beats none — return what streamed before the cutoff.
+        if (idleController.signal.aborted || totalSignal.aborted) {
+          const reason = idleController.signal.aborted
+            ? `no data for ${cfg.idle_timeout_ms}ms — advisor stalled`
+            : `exceeded total cap of ${cfg.timeout_ms}ms`;
+          if (advice) {
+            return {
+              content: [{ type: "text", text: `${advice}\n\n[advisor] Advice truncated: ${reason}.` }],
+            };
+          }
+          return {
+            content: [{ type: "text", text: `[advisor] Timed out (${reason}). Proceed with your own judgment.` }],
+            isError: true,
+          };
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
           content: [
             { type: "text", text: `[advisor] Request failed: ${msg}. Proceed with your own judgment.` },
           ],
           isError: true,
         };
+      } finally {
+        clearTimeout(idleTimer);
       }
     },
   });
