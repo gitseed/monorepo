@@ -32,7 +32,7 @@ interface AdvisorConfig {
   /** Max silence between stream chunks before the advisor is considered stalled. */
   idle_timeout_ms: number;
   instructions: string | null;
-  max_completion_tokens: number | null;
+  max_tokens: number | null;
   temperature: number | null;
   /** OpenRouter unified reasoning config, e.g. { "effort": "medium" }. */
   reasoning: Record<string, unknown> | null;
@@ -45,7 +45,7 @@ const DEFAULTS: AdvisorConfig = {
   timeout_ms: 180_000,
   idle_timeout_ms: 30_000,
   instructions: null,
-  max_completion_tokens: 2000,
+  max_tokens: 2000,
   temperature: null,
   reasoning: null,
 };
@@ -72,6 +72,7 @@ function applyEnvOverrides(cfg: AdvisorConfig): AdvisorConfig {
 interface StreamDelta {
   choices?: Array<{ delta?: { content?: string } }>;
   error?: { message?: string };
+  model?: string;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -123,8 +124,7 @@ export default function (pi: ExtensionAPI) {
         body.models = [cfg.model, ...cfg.fallback_models];
         delete body.model;
       }
-
-      if (cfg.max_completion_tokens != null) body.max_completion_tokens = cfg.max_completion_tokens;
+      if (cfg.max_tokens != null) body.max_tokens = cfg.max_tokens;
       if (cfg.temperature != null) body.temperature = cfg.temperature;
       if (cfg.reasoning != null) body.reasoning = cfg.reasoning;
 
@@ -143,15 +143,26 @@ export default function (pi: ExtensionAPI) {
       const combinedSignal = AbortSignal.any(signals);
 
       let advice = "";
+      let responseModel = "";
 
       try {
         onUpdate?.({ content: [{ type: "text", text: `Consulting ${cfg.model}...` }] });
+
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey) {
+          return {
+            content: [
+              { type: "text", text: "[advisor] OPENROUTER_API_KEY is not set. Proceed with your own judgment." },
+            ],
+            isError: true,
+          };
+        }
         resetIdle();
 
         const res = await fetch(OPENROUTER_URL, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY ?? ""}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/gitseed/monorepo",
             "X-Title": "OMP Advisor Extension",
@@ -216,6 +227,7 @@ export default function (pi: ExtensionAPI) {
             }
             const delta = parsed.choices?.[0]?.delta?.content;
             if (delta) advice += delta;
+            if (parsed.model) responseModel = parsed.model;
           }
 
           const now = Date.now();
@@ -238,22 +250,29 @@ export default function (pi: ExtensionAPI) {
 
         return {
           content: [{ type: "text", text: advice }],
-          details: { model: cfg.model },
+          details: { model: responseModel || cfg.model },
         };
       } catch (err) {
         if (signal?.aborted) {
           return { content: [{ type: "text", text: "Cancelled" }] };
         }
-        // Partial advice beats none — return what streamed before the cutoff.
-        if (idleController.signal.aborted || totalSignal.aborted) {
+        // Partial advice beats none — return what streamed before the cutoff,
+        // regardless of error type (timeout, abort, or mid-stream error event).
+        const isTimeout = idleController.signal.aborted || totalSignal.aborted;
+        if (advice) {
+          const reason = isTimeout
+            ? idleController.signal.aborted
+              ? `no data for ${cfg.idle_timeout_ms}ms — advisor stalled`
+              : `exceeded total cap of ${cfg.timeout_ms}ms`
+            : (err instanceof Error ? err.message : String(err));
+          return {
+            content: [{ type: "text", text: `${advice}\n\n[advisor] Advice truncated: ${reason}.` }],
+          };
+        }
+        if (isTimeout) {
           const reason = idleController.signal.aborted
             ? `no data for ${cfg.idle_timeout_ms}ms — advisor stalled`
             : `exceeded total cap of ${cfg.timeout_ms}ms`;
-          if (advice) {
-            return {
-              content: [{ type: "text", text: `${advice}\n\n[advisor] Advice truncated: ${reason}.` }],
-            };
-          }
           return {
             content: [{ type: "text", text: `[advisor] Timed out (${reason}). Proceed with your own judgment.` }],
             isError: true,
