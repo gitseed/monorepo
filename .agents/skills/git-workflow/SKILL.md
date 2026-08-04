@@ -1,48 +1,35 @@
 ---
 name: git-workflow
-description: Branch-per-task, commit as you go, push and PR when done — never commit to main, never amend a commit. Load before any work on the repo.
+description: Branch-per-task, commit as you go, push and PR when done — never commit to main, never amend, never force push. Load before any work on the repo.
 ---
 
 # Git workflow
 
-This is the only way to do repo work. Every task follows the same
-flow: branch, commit as you go, push and PR.
+Worktrees, commit as you go, push and PR.
 
-## Never commit to main
+## Worktree
 
-`main` is read-only. All work happens on a feature branch checked out
-from the latest `main`. Fetch first, then branch:
+Use a worktree — not `git switch` — so concurrent agents don't clobber
+each other's branch state:
 
 ```
-git fetch && git switch --no-track -c <branch> origin/main
+git fetch && git worktree add -b <branch> ~/.omp/wt/<branch> origin/main
+cd ~/.omp/wt/<branch>
 ```
 
-`--no-track` avoids setting up tracking until you push.
+## Rules
 
-## Never amend a commit
+- **Never commit to main.** All work happens on a feature branch.
+- **Never amend.** Add a new commit to correct a wrong one.
+- **Never force push.** If rejected, fetch and merge instead.
+- **Merge, don't rebase.** Rebasing rewrites history.
+- **Commit as you go.** One logical unit per commit.
 
-Amending rewrites history and hides what actually happened. If a
-commit is wrong, add a new commit that corrects it. The history is a
-log, not a narrative — messy but truthful beats clean but rewritten.
-
-## Commit as you go
-
-Commit frequently — each logical unit of work gets its own commit.
-The frequency is your call, but a single PR should never be one giant
-commit unless the change is genuinely atomic.
-
-## Push and open a PR when done
-
-When the work is complete and verified:
+## When done
 
 1. `git push -u origin <branch>`
-2. `gh pr create --base main --title "<title>" --body "<description>"`
-3. The PR body should describe what changed and why.
+2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test
+3. `gh pr create --base main --title "<title>" --body "<description>"`
 
-
-## Summary
-
-1. `git fetch && git switch --no-track -c <branch> origin/main` — before any work
-2. `git add` / `git commit` — as you go, not once at the end
-3. `git push` + `gh pr create` — when done
-4. Never `git commit` on `main`. Never `git commit --amend`.
+`omp worktree list` shows all agent-managed worktrees; `omp worktree clear`
+reclaims orphaned ones.

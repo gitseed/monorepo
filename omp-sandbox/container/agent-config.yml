@@ -8,3 +8,16 @@ memory:
 hindsight:
   apiUrl: http://hindsight:8888
 setupVersion: 1
+providers:
+  # Exclude providers that fail in a sandboxed/datacenter environment:
+  # - duckduckgo: bot-detection challenge on datacenter IPs
+  # - google, ecosia, mojeek: require the shared browser daemon (Chromium),
+  #   which is not available in the sandbox; they hang or time out.
+  # Startpage (scraping fallback) remains the working default.
+  webSearchOrder:
+    - firecrawl
+  webSearchExclude:
+    - duckduckgo
+    - google
+    - ecosia
+    - mojeek

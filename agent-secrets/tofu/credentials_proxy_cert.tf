@@ -24,7 +24,7 @@ resource "tls_private_key" "credentials_proxy_server" {
 
 resource "tls_cert_request" "credentials_proxy_server" {
   private_key_pem = tls_private_key.credentials_proxy_server.private_key_pem
-  dns_names       = ["openrouter.ai", "api.github.com", "github.com"]
+  dns_names       = ["openrouter.ai", "api.github.com", "github.com", "api.firecrawl.dev"]
   subject {
     common_name = "openrouter.ai"
   }

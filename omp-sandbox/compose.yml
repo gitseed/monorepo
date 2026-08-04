@@ -10,6 +10,7 @@ services:
       - GITHUB_TOKEN_BASIC
       - CREDENTIALS_PROXY_SERVER_CERT
       - CREDENTIALS_PROXY_SERVER_KEY
+      - FIRECRAWL_API_KEY
     healthcheck:
       # The envoy image has no curl.
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/443'"]
@@ -31,6 +32,7 @@ services:
       - "proxy:openrouter.ai"
       - "proxy:api.github.com"
       - "proxy:github.com"
+      - "proxy:api.firecrawl.dev"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
     cap_drop:
