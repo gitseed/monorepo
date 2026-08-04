@@ -86,6 +86,10 @@ ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 
+# OpenRouter Advisor tools — each JSON in advisers/ defines one advisor tool.
+COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
+COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
+
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
 COPY entrypoint.sh /entrypoint.sh
