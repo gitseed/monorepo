@@ -23,3 +23,6 @@ providers:
     - google
     - ecosia
     - mojeek
+tools:
+  approval:
+    edit: deny
