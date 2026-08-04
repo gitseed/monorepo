@@ -91,6 +91,10 @@ COPY models.json /root/.pi/agent/models.json
 # socket (mounted at /var/run/postgresql) via Bun's native SQL bindings.
 COPY extensions/memory.ts /root/.pi/agent/extensions/memory.ts
 
+# OpenRouter discovery — fills contextWindow/maxTokens/cost for the
+# models.json entries from OpenRouter's live /models catalog at startup.
+COPY extensions/openrouter-discovery.ts /root/.pi/agent/extensions/openrouter-discovery.ts
+
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
 COPY entrypoint.sh /entrypoint.sh

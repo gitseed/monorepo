@@ -8,18 +8,11 @@
         {
           "id": "z-ai/glm-5.2",
           "name": "GLM 5.2",
-          "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 200000,
-          "maxTokens": 16384
+          "reasoning": true
         },
         {
           "id": "deepseek/deepseek-v4-flash-0731",
-          "name": "DeepSeek V4 Flash",
-          "reasoning": false,
-          "input": ["text"],
-          "contextWindow": 128000,
-          "maxTokens": 8192
+          "name": "DeepSeek V4 Flash"
         }
       ]
     }
