@@ -21,8 +21,8 @@ export default function (pi: ExtensionAPI) {
   const { z } = pi.zod
 
   pi.registerTool({
-    name: "morph_edit",
-    label: "Morph Edit",
+    name: "edit",
+    label: "Edit",
     description: [
       "Apply a code edit using Morph Fast Apply via OpenRouter.",
       "",
