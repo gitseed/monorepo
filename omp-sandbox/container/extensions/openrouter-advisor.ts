@@ -26,12 +26,17 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 interface AdvisorConfig {
   disabled: boolean;
   model: string;
+  /** Tool description shown to the model. */
+  description: string;
+  /** Tool label shown in UI. */
+  label: string;
+  /** System prompt for the advisor model. */
+  instructions: string | null;
   fallback_models: string[];
   /** Total wall-clock cap for one consultation. */
   timeout_ms: number;
   /** Max silence between stream chunks before the advisor is considered stalled. */
   idle_timeout_ms: number;
-  instructions: string | null;
   max_tokens: number | null;
   temperature: number | null;
   /** OpenRouter unified reasoning config, e.g. { "effort": "medium" }. */
@@ -41,6 +46,9 @@ interface AdvisorConfig {
 const DEFAULTS: AdvisorConfig = {
   disabled: false,
   model: "qwen/qwen3.8-max",
+  description:
+    "Consult a higher-intelligence advisor model for strategic guidance, then continue your work informed by its advice. Use it before committing to an approach on a complex task, when you are stuck, or before declaring a task done.",
+  label: "OpenRouter Advisor",
   fallback_models: [],
   timeout_ms: 180_000,
   idle_timeout_ms: 30_000,
@@ -92,9 +100,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool({
     name: ADVISOR_TOOL_NAME,
-    label: "OpenRouter Advisor",
-    description:
-      "Consult a higher-intelligence advisor model for strategic guidance, then continue your work informed by its advice. Use it before committing to an approach on a complex task, when you are stuck, or before declaring a task done.",
+    label: cfg.label,
+    description: cfg.description,
     parameters: z.object({
       prompt: z
         .string()
