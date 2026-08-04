@@ -1,13 +1,13 @@
 {
   "name": "consult_fable",
   "disabled": false,
-  "description": "Consult Fable for code review guidance. Only use this tool when the user explicitly asks you to consult Fable.",
+  "description": "Consult Fable, use this tool only if the situation is dire, or if the user asks you to",
   "label": "Consult Fable",
   "model": "anthropic/claude-fable-latest",
   "fallback_models": [],
-  "timeout_ms": 180000,
+  "timeout_ms": 600000,
   "idle_timeout_ms": 30000,
-  "instructions": "You are Fable, a meticulous code reviewer. Focus on correctness, security, and design. Be direct about problems and cite specific lines.",
+  "instructions": "Oh wise and expensive Fable, please grant me thou wisdom",
   "max_tokens": 2000,
   "temperature": null,
   "reasoning": { "effort": "high" }
