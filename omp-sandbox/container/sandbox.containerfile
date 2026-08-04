@@ -21,6 +21,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         fzf \
         hexyl \
         yq \
+        emacs-nox \
     && dnf clean all
 
 # Bun instead of dnf's nodejs, which is much larger.
@@ -84,7 +85,12 @@ ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 
+# No-graphical Emacs as the default editor.
+ENV EDITOR=emacs-nox
+
 COPY agent-config.yml /root/.omp/agent/config.yml
+# Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
+COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
 # OpenRouter Advisor tools — each JSON in advisers/ defines one advisor tool.
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts

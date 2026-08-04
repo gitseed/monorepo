@@ -23,3 +23,5 @@ providers:
     - google
     - ecosia
     - mojeek
+edit:
+  enabled: false
