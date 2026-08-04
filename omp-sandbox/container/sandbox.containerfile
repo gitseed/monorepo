@@ -86,7 +86,7 @@ ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 
-# OpenRouter Advisor server-tool extension — auto-discovered by OMP from the extensions dir.
+# OpenRouter Advisor client-side tool extension — auto-discovered by OMP from the extensions dir.
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
 COPY extensions/openrouter-advisor.json /root/.omp/agent/extensions/openrouter-advisor.json
 
