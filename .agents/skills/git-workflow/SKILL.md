@@ -28,8 +28,8 @@ cd ~/.omp/wt/<branch>
 ## When done
 
 1. `git push -u origin <branch>`
-2. `gh pr create --base main --title "<title>" --body "<description>"`
-3. After merge: `git worktree remove ~/.omp/wt/<branch>`
+2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test
+3. `gh pr create --base main --title "<title>" --body "<description>"`
 
 `omp worktree list` shows all agent-managed worktrees; `omp worktree clear`
 reclaims orphaned ones.
