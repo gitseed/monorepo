@@ -14,6 +14,8 @@ providers:
   # - google, ecosia, mojeek: require the shared browser daemon (Chromium),
   #   which is not available in the sandbox; they hang or time out.
   # Startpage (scraping fallback) remains the working default.
+  webSearchOrder:
+    - firecrawl
   webSearchExclude:
     - duckduckgo
     - google
