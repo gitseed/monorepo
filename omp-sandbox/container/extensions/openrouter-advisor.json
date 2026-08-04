@@ -6,7 +6,7 @@
   "fallback_models": ["anthropic/claude-opus-5"],
   "timeout_ms": 180000,
   "idle_timeout_ms": 30000,
-  "instructions": null,
+  "instructions": "You are a strategic advisor to an AI coding agent. Provide concise, actionable guidance.",
   "max_tokens": 2000,
   "temperature": null,
   "reasoning": { "effort": "medium" }

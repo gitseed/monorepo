@@ -31,7 +31,7 @@ interface AdvisorConfig {
   /** Tool label shown in UI. */
   label: string;
   /** System prompt for the advisor model. */
-  instructions: string | null;
+  instructions: string;
   fallback_models: string[];
   /** Total wall-clock cap for one consultation. */
   timeout_ms: number;
@@ -52,7 +52,7 @@ const DEFAULTS: AdvisorConfig = {
   fallback_models: [],
   timeout_ms: 180_000,
   idle_timeout_ms: 30_000,
-  instructions: null,
+  instructions: "You are a strategic advisor to an AI coding agent. Provide concise, actionable guidance.",
   max_tokens: 2000,
   temperature: null,
   reasoning: null,
@@ -119,9 +119,7 @@ export default function (pi: ExtensionAPI) {
         messages: [
           {
             role: "system",
-            content:
-              cfg.instructions ??
-              "You are a strategic advisor to an AI coding agent. Provide concise, actionable guidance.",
+            content: cfg.instructions,
           },
           { role: "user", content: params.prompt },
         ],
