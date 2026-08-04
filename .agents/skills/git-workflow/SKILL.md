@@ -13,8 +13,8 @@ Use a worktree — not `git switch` — so concurrent agents don't clobber
 each other's branch state:
 
 ```
-git fetch && git worktree add -b <branch> ~/.omp/wt/<branch> origin/main
-cd ~/.omp/wt/<branch>
+git fetch && git worktree add -b <branch> ~/.pi/wt/<branch> origin/main
+cd ~/.pi/wt/<branch>
 ```
 
 ## Rules
@@ -28,8 +28,8 @@ cd ~/.omp/wt/<branch>
 ## When done
 
 1. `git push -u origin <branch>`
-2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test
+2. `git worktree remove ~/.pi/wt/<branch>` — then checkout locally to test
 3. `gh pr create --base main --title "<title>" --body "<description>"`
 
-`omp worktree list` shows all agent-managed worktrees; `omp worktree clear`
-reclaims orphaned ones.
+`git worktree list` shows all worktrees; `git worktree prune` reclaims
+orphaned ones.
