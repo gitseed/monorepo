@@ -102,8 +102,6 @@ export default function (pi: ExtensionAPI) {
           body: JSON.stringify({
             model: MORPH_MODEL,
             messages: [{ role: "user", content: prompt }],
-            // Morph must reproduce the whole file, so size max_tokens for it.
-            max_tokens: 8192,
           }),
           signal: signal ?? undefined,
         })
