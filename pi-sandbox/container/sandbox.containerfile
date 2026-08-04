@@ -85,15 +85,14 @@ ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 ENV EDITOR=emacs-nox
 
 COPY settings.json /root/.pi/agent/settings.json
-COPY models.json /root/.pi/agent/models.json
 
 # Memory extension — logs every turn to the shared postgres over its unix
 # socket (mounted at /var/run/postgresql) via Bun's native SQL bindings.
 COPY extensions/memory.ts /root/.pi/agent/extensions/memory.ts
 
-# OpenRouter discovery — fills contextWindow/maxTokens/cost for the
-# models.json entries from OpenRouter's live /models catalog at startup.
-COPY extensions/openrouter-discovery.ts /root/.pi/agent/extensions/openrouter-discovery.ts
+# OpenRouter provider — registers the full tool-capable OpenRouter catalog
+# with live metadata at startup (no models.json).
+COPY extensions/openrouter.ts /root/.pi/agent/extensions/openrouter.ts
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
