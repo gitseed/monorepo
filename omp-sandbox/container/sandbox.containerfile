@@ -82,10 +82,15 @@ ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pe
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 # Placeholder so gh adds an Authorization header that the proxy overwrites.
 ENV GITHUB_TOKEN=dummy-replaced-by-proxy
+ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
 COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
+
+# OpenRouter Advisor tools — each JSON in advisers/ defines one advisor tool.
+COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
+COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
