@@ -1,6 +1,6 @@
 #!/bin/bash
-# omp-sandbox/scripts/up.sh      # interactive omp
-# omp-sandbox/scripts/up.sh bash # plain shell instead
+# pi-sandbox/scripts/up.bash      # interactive pi
+# pi-sandbox/scripts/up.bash bash # plain shell instead
 set -euo pipefail
 
 # Everything lives inside main() so bash parses the whole file before running
@@ -8,18 +8,18 @@ set -euo pipefail
 # this file while a sandbox session is running causes bogus syntax errors when
 # the session exits.
 main() {
-    # omp workspace is the monorepo root directory
+    # pi workspace is the monorepo root directory
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
-    COMPOSE=(docker compose -f omp-sandbox/compose.yml)
-    PROJECT=omp-sandbox-$$
+    COMPOSE=(docker compose -f pi-sandbox/compose.yml)
+    PROJECT=pi-sandbox-$$
     export GIT_PROJECT_DIR
-    HINDSIGHT_COMPOSE=(docker compose -f omp-sandbox/hindsight.compose.yml)
-    # Shared network so the per-session project can reach the stable memory service.
-    docker network create omp-sandbox-net 2>/dev/null || true
+    MEMORY_COMPOSE=(docker compose -f pi-sandbox/memory.compose.yml)
+    # No secrets needed: postgres is socket-only with trust auth, shared with
+    # sandbox sessions via the pi-memory-socket volume.
     echo "starting agent memory service..."
-    infisical run -- "${HINDSIGHT_COMPOSE[@]}" up -d --wait
+    "${MEMORY_COMPOSE[@]}" up -d --wait
 
     cleanup() {
         local status=$?
@@ -36,12 +36,10 @@ main() {
             echo "WARNING: could not enumerate containers; leaving memory service running" >&2
             return $status
         fi
-        if printf '%s\n' "$projects" | grep -q '^omp-sandbox-[0-9][0-9]*$'; then
+        if printf '%s\n' "$projects" | grep -q '^pi-sandbox-[0-9][0-9]*$'; then
             return $status   # another session is still active
         fi
-        "${HINDSIGHT_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
-        # Deleting the network is slow and not worth, assuming it doesn't nag at you to have it persist.
-        # docker network rm omp-sandbox-net 2>/dev/null || true
+        "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
         return $status
     }
     trap cleanup EXIT
@@ -58,7 +56,7 @@ main() {
         "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
     fi
 
-    if built_today omp-sandbox; then
+    if built_today pi-sandbox; then
         infisical run -- "${COMPOSE[@]}" -p "$PROJECT" build sandbox
     else
         infisical run -- \
@@ -70,7 +68,7 @@ main() {
         "${COMPOSE[@]}" -p "$PROJECT" up -d --wait proxy
 
     if [[ $# -eq 0 ]]; then
-        set -- omp
+        set -- pi
     fi
 
     # The run must also be under infisical so envs are populated

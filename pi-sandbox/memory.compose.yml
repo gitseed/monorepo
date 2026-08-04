@@ -1,0 +1,29 @@
+# Long-lived agent memory service: postgres reachable ONLY over its unix
+# socket, which is shared with sandbox sessions via the pi-memory-socket
+# volume. listen_addresses='' disables TCP entirely, so no network is
+# attached and trust auth on the socket is the sole access path.
+name: pi-memory
+services:
+  postgres:
+    image: postgres:17
+    command: ["postgres", "-c", "listen_addresses="]
+    environment:
+      POSTGRES_USER: pi
+      POSTGRES_DB: memory
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - socket:/var/run/postgresql
+      - ./memory/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    network_mode: none
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h /var/run/postgresql -U pi -d memory"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+volumes:
+  pgdata:
+  socket:
+    name: pi-memory-socket

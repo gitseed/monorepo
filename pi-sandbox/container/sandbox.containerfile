@@ -35,8 +35,8 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
-RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
-        | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
+# pi coding agent. BUN_INSTALL=/usr/local links the `pi` bin into /usr/local/bin.
+RUN BUN_INSTALL=/usr/local bun add -g @earendil-works/pi-coding-agent
 
 # RTK — CLI proxy that compresses bash output for LLM context.
 ARG RTK_VERSION=0.44.2
@@ -48,12 +48,8 @@ RUN curl -fsSL -o /tmp/rtk.tar.gz \
     && chmod 0755 /usr/local/bin/rtk \
     && rm -f /tmp/rtk.tar.gz
 
-# Install the RTK Pi extension and relocate it to the omp extensions directory.
-RUN rtk init -g --agent pi --auto-patch \
-    && mkdir -p /root/.omp/agent/extensions \
-    && cp /root/.pi/agent/extensions/rtk.ts /root/.omp/agent/extensions/rtk.ts \
-    && rm -rf /root/.pi
-
+# RTK Pi extension lands in /root/.pi/agent/extensions/rtk.ts.
+RUN rtk init -g --agent pi --auto-patch
 
 # sd — intuitive sed replacement (not in Fedora repos).
 ARG SD_VERSION=1.1.0
@@ -73,13 +69,13 @@ RUN curl -fsSL -o /usr/local/bin/pkl \
     && echo "${PKL_SHA256}  /usr/local/bin/pkl" | sha256sum --check \
     && chmod 0755 /usr/local/bin/pkl
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
-    cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
+    cp /ca.pem /etc/pki/ca-trust/source/anchors/pi-sandbox-local-ca.pem \
     && update-ca-trust extract
 
 # Bun's fetch ignores the system trust store.
-ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem
+ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/pi-sandbox-local-ca.pem
 
-# Placeholder so omp considers the provider available.
+# Placeholder so pi considers the provider available.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 # Placeholder so gh adds an Authorization header that the proxy overwrites.
 ENV GITHUB_TOKEN=dummy-replaced-by-proxy
@@ -88,13 +84,12 @@ ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 # No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
 
-COPY agent-config.yml /root/.omp/agent/config.yml
-# Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
-COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
+COPY settings.json /root/.pi/agent/settings.json
+COPY models.json /root/.pi/agent/models.json
 
-# OpenRouter Advisor tools — each JSON in advisers/ defines one advisor tool.
-COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
-COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
+# Memory extension — logs every turn to the shared postgres over its unix
+# socket (mounted at /var/run/postgresql) via Bun's native SQL bindings.
+COPY extensions/memory.ts /root/.pi/agent/extensions/memory.ts
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
