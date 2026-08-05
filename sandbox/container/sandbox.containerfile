@@ -73,11 +73,11 @@ RUN curl -fsSL -o /usr/local/bin/pkl \
     && echo "${PKL_SHA256}  /usr/local/bin/pkl" | sha256sum --check \
     && chmod 0755 /usr/local/bin/pkl
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
-    cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
+    cp /ca.pem /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem \
     && update-ca-trust extract
 
 # Bun's fetch ignores the system trust store.
-ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem
+ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 
 # Placeholder so omp considers the provider available.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
@@ -95,6 +95,10 @@ COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 # OpenRouter Advisor tools — each JSON in advisers/ defines one advisor tool.
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
 COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
+
+# Memory extension — logs every turn to the shared postgres over its unix
+# socket via Bun's native SQL bindings. No-op unless MEMORY_ENABLED=1.
+COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
