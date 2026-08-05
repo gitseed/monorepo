@@ -5,7 +5,8 @@
 name: omp-memory
 services:
   postgres:
-    image: postgres:17
+    # postgres:17 + pgvector, needed for the memories.embedding column.
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: omp
       POSTGRES_DB: memory
