@@ -5,10 +5,11 @@ modelRoles:
   smol: openrouter/deepseek/deepseek-v4-flash-0731
 symbolPreset: nerd
 hideThinkingBlock: true
+# Built-in memory tools (memory_recall/retain/reflect) stay off; turn
+# logging is handled by the postgres memory extension instead (also
+# disabled for now — see extensions/memory.ts).
 memory:
-  backend: hindsight
-hindsight:
-  apiUrl: http://hindsight:8888
+  backend: "off"
 setupVersion: 1
 providers:
   # Exclude providers that fail in a sandboxed/datacenter environment:

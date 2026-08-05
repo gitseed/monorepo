@@ -1,0 +1,29 @@
+# Long-lived agent memory service. Sandboxes reach postgres ONLY over its
+# unix socket, shared via the omp-memory-socket volume — they share no
+# network with it. TCP exists solely as a host-loopback port for
+# troubleshooting from the host (psql -h 127.0.0.1 -U omp memory).
+name: omp-memory
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: omp
+      POSTGRES_DB: memory
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - socket:/var/run/postgresql
+      - ./memory/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h /var/run/postgresql -U omp -d memory"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+volumes:
+  pgdata:
+  socket:
+    name: omp-memory-socket

@@ -15,11 +15,11 @@ main() {
     COMPOSE=(docker compose -f omp-sandbox/compose.yml)
     PROJECT=omp-sandbox-$$
     export GIT_PROJECT_DIR
-    HINDSIGHT_COMPOSE=(docker compose -f omp-sandbox/hindsight.compose.yml)
-    # Shared network so the per-session project can reach the stable memory service.
-    docker network create omp-sandbox-net 2>/dev/null || true
+    MEMORY_COMPOSE=(docker compose -f omp-sandbox/memory.compose.yml)
+    # No secrets needed: postgres is socket-only with trust auth, shared with
+    # sandbox sessions via the omp-memory-socket volume.
     echo "starting agent memory service..."
-    infisical run -- "${HINDSIGHT_COMPOSE[@]}" up -d --wait
+    "${MEMORY_COMPOSE[@]}" up -d --wait
 
     cleanup() {
         local status=$?
@@ -39,9 +39,7 @@ main() {
         if printf '%s\n' "$projects" | grep -q '^omp-sandbox-[0-9][0-9]*$'; then
             return $status   # another session is still active
         fi
-        "${HINDSIGHT_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
-        # Deleting the network is slow and not worth, assuming it doesn't nag at you to have it persist.
-        # docker network rm omp-sandbox-net 2>/dev/null || true
+        "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
         return $status
     }
     trap cleanup EXIT

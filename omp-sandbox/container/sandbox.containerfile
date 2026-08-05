@@ -96,6 +96,10 @@ COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
 COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
 
+# Memory extension — logs every turn to the shared postgres over its unix
+# socket via Bun's native SQL bindings. No-op unless MEMORY_ENABLED=1.
+COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
+
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
 COPY entrypoint.sh /entrypoint.sh
