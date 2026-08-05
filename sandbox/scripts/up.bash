@@ -1,6 +1,6 @@
 #!/bin/bash
-# omp-sandbox/scripts/up.sh      # interactive omp
-# omp-sandbox/scripts/up.sh bash # plain shell instead
+# sandbox/scripts/up.sh      # interactive omp
+# sandbox/scripts/up.sh bash # plain shell instead
 set -euo pipefail
 
 # Everything lives inside main() so bash parses the whole file before running
@@ -12,10 +12,10 @@ main() {
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
-    COMPOSE=(docker compose -f omp-sandbox/compose.yml)
-    PROJECT=omp-sandbox-$$
+    COMPOSE=(docker compose -f sandbox/compose.yml)
+    PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
-    MEMORY_COMPOSE=(docker compose -f omp-sandbox/memory.compose.yml)
+    MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
     # No secrets needed: postgres is socket-only with trust auth, shared with
     # sandbox sessions via the omp-memory-socket volume.
     echo "starting agent memory service..."
@@ -36,7 +36,7 @@ main() {
             echo "WARNING: could not enumerate containers; leaving memory service running" >&2
             return $status
         fi
-        if printf '%s\n' "$projects" | grep -q '^omp-sandbox-[0-9][0-9]*$'; then
+        if printf '%s\n' "$projects" | grep -q '^sandbox-[0-9][0-9]*$'; then
             return $status   # another session is still active
         fi
         "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
@@ -56,7 +56,7 @@ main() {
         "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
     fi
 
-    if built_today omp-sandbox; then
+    if built_today sandbox; then
         infisical run -- "${COMPOSE[@]}" -p "$PROJECT" build sandbox
     else
         infisical run -- \

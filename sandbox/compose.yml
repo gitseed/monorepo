@@ -19,7 +19,7 @@ services:
       retries: 30
       start_period: 1s
   sandbox:
-    image: omp-sandbox
+    image: sandbox
     build:
       context: ./container
       dockerfile: sandbox.containerfile

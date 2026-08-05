@@ -4,7 +4,7 @@
 // turn it on (the postgres service and socket mount are always in place, so
 // the flag is the only switch).
 //
-// One row per turn in the `turns` table (see omp-sandbox/memory/init.sql):
+// One row per turn in the `turns` table (see sandbox/memory/init.sql):
 //   say   — user prompt
 //   steer — user injection while the agent is running
 //   think — model thinking block

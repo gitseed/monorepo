@@ -73,11 +73,11 @@ RUN curl -fsSL -o /usr/local/bin/pkl \
     && echo "${PKL_SHA256}  /usr/local/bin/pkl" | sha256sum --check \
     && chmod 0755 /usr/local/bin/pkl
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
-    cp /ca.pem /etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem \
+    cp /ca.pem /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem \
     && update-ca-trust extract
 
 # Bun's fetch ignores the system trust store.
-ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/omp-sandbox-local-ca.pem
+ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 
 # Placeholder so omp considers the provider available.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy

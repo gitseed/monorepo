@@ -1,11 +1,11 @@
 ---
 name: extension-typecheck
-description: Typecheck OMP sandbox extensions before committing — run tsc --noEmit in omp-sandbox/container/extensions after any .ts change. Load before editing or creating extension files.
+description: Typecheck OMP sandbox extensions before committing — run tsc --noEmit in sandbox/container/extensions after any .ts change. Load before editing or creating extension files.
 ---
 
 # Extension typecheck discipline
 
-The `omp-sandbox/container/extensions/` directory contains TypeScript files
+The `sandbox/container/extensions/` directory contains TypeScript files
 (OMP extensions) that are never compiled or typechecked by the runtime —
 Bun erases `import type` and loads them directly. A wrong import or bad
 type silently becomes dead code that ships unnoticed.
@@ -13,14 +13,14 @@ type silently becomes dead code that ships unnoticed.
 ## When to typecheck
 
 Run `bun run typecheck` (which executes `tsc --noEmit`) from
-`omp-sandbox/container/extensions/` **before committing** any change to a
+`sandbox/container/extensions/` **before committing** any change to a
 `.ts` file in that directory. This includes new files, edits, and branch
 switches that might introduce type errors.
 
 ## How to typecheck
 
 ```bash
-cd omp-sandbox/container/extensions
+cd sandbox/container/extensions
 bun install          # first time or after dependency changes
 bun run typecheck    # tsc --noEmit
 ```
