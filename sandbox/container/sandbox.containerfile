@@ -79,6 +79,12 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
 # Bun's fetch ignores the system trust store.
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 
+# Terminal type for interactive shells — emacs-nox needs a real terminal
+# to interpret Home/End/function keys (fn+left, fn+right). The omp CLI
+# overrides TERM=dumb for its own bash tool sandbox, so this only affects
+# interactive sessions.
+ENV TERM=xterm-256color
+
 # Placeholder so omp considers the provider available.
 ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 # Placeholder so gh adds an Authorization header that the proxy overwrites.
@@ -87,6 +93,9 @@ ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 
 # No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
+
+# Emacs init — binds Home/End (fn+left/right) across terminal escape sequence variants.
+COPY emacs-init.el /root/.emacs.d/init.el
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
