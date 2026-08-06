@@ -1,11 +1,6 @@
 // Memory extension — passive capture, recollect/recall/remember/suppress
 // tools, and unprompted surfacing.
 //
-// Configured by /root/.omp/agent/memory.json (override the path with
-// MEMORY_CONFIG); missing file or keys fall back to DEFAULTS below, with
-// enabled=false, so the extension is inert until the config turns it on.
-// OPENROUTER_API_KEY stays an env var — it's a secret, not config.
-//
 // One row per memory in the `memories` table (see sandbox/memory/init.sql):
 //   heard      — something the user said (captured automatically)
 //   said       — something the agent said (captured automatically)
@@ -26,8 +21,9 @@
 // response: heard surfaces pre-run via before_agent_start (the prompt
 // embed blocks ~300ms, then the block is in context before the model
 // responds); recall chaining rides the recall tool result; said/thought/
-// steered input queue as nextTurn context seen alongside the next real
-// message. Each memory surfaces at most once per session (cooldown).
+// steered input mid-run piggyback on the next non-memory tool result,
+// with leftovers flushed as nextTurn context at agent_end. Each memory
+// surfaces at most once per session (cooldown).
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -35,155 +31,10 @@
 import { SQL } from "bun"
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"
 import { Text } from "@oh-my-pi/pi-tui"
+import { type MemoryConfig, loadConfig, type Kind, KINDS } from "./memory/config"
+import { summarize, embed } from "./memory/openrouter"
 
-const CONFIG_PATH = process.env.MEMORY_CONFIG || "/root/.omp/agent/memory.json"
-const OPENROUTER = "https://openrouter.ai/api/v1"
 const SURFACING_MESSAGE_TYPE = "memory-recollection"
-
-interface MemoryConfig {
-  enabled: boolean
-  postgres: {
-    socketPath: string
-    port: number
-    database: string
-    username: string
-    maxConnections: number
-  }
-  summary: {
-    model: string
-    maxInputChars: number
-    maxTokens: number
-    timeoutMs: number
-  }
-  embedding: {
-    // Baked into the schema: memories.embedding is vector(1536).
-    // Switching models means re-embedding the table.
-    model: string
-    maxInputChars: number
-    timeoutMs: number
-  }
-  recollect: {
-    defaultCount: number
-    maxCount: number
-  }
-  surfacing: {
-    enabled: boolean
-    minSimilarity: number
-    maxSimilarity: number
-    perKindLimit: number
-  }
-}
-
-const DEFAULTS: MemoryConfig = {
-  enabled: false,
-  postgres: {
-    socketPath: "/var/run/postgresql",
-    port: 5432,
-    database: "memory",
-    username: "omp",
-    maxConnections: 2,
-  },
-  summary: {
-    model: "deepseek/deepseek-v4-flash-0731",
-    maxInputChars: 8_000,
-    maxTokens: 40,
-    timeoutMs: 20_000,
-  },
-  embedding: {
-    model: "openai/text-embedding-3-small",
-    maxInputChars: 30_000,
-    timeoutMs: 20_000,
-  },
-  recollect: {
-    defaultCount: 3,
-    maxCount: 25,
-  },
-  surfacing: {
-    enabled: false,
-    // min gates relevance; max is the anti-déjà-vu filter — near-identical
-    // memories (the same exchange from a past session) don't resurface.
-    // Scale is model-specific: with text-embedding-3-small, echoes sit at
-    // ~1.0, strong associations at ~0.45-0.55, noise below ~0.3 (measured
-    // against a live corpus). A 0.55 floor left no band under the ceiling.
-    minSimilarity: 0.4,
-    maxSimilarity: 0.95,
-    perKindLimit: 2,
-  },
-}
-
-async function loadConfig(): Promise<MemoryConfig> {
-  try {
-    const raw = (await Bun.file(CONFIG_PATH).json()) as Partial<MemoryConfig>
-    return {
-      enabled: raw.enabled ?? DEFAULTS.enabled,
-      postgres: { ...DEFAULTS.postgres, ...raw.postgres },
-      summary: { ...DEFAULTS.summary, ...raw.summary },
-      embedding: { ...DEFAULTS.embedding, ...raw.embedding },
-      recollect: { ...DEFAULTS.recollect, ...raw.recollect },
-      surfacing: { ...DEFAULTS.surfacing, ...raw.surfacing },
-    }
-  } catch {
-    return DEFAULTS
-  }
-}
-
-type Kind = "heard" | "said" | "thought" | "remembered"
-const KINDS: Kind[] = ["heard", "said", "thought", "remembered"]
-
-/** One-phrase summary from the summary model, or null on any failure. No
- *  fabricated stand-ins: a NULL summary column is the loud, queryable
- *  signal that summarization failed or hasn't run. */
-async function summarize(cfg: MemoryConfig["summary"], content: string): Promise<string | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) return null
-  try {
-    const res = await fetch(`${OPENROUTER}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: cfg.model,
-        max_tokens: cfg.maxTokens,
-        // Reasoning burns the whole token budget before any content lands
-        // (finish_reason "length", content null).
-        reasoning: { enabled: false },
-        messages: [
-          {
-            role: "system",
-            content:
-              "Summarize the following conversation turn in one very short phrase, 12 words max. Output only the phrase.",
-          },
-          { role: "user", content: content.slice(0, cfg.maxInputChars) },
-        ],
-      }),
-      signal: AbortSignal.timeout(cfg.timeoutMs),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    return data.choices?.[0]?.message?.content?.trim() || null
-  } catch {
-    return null
-  }
-}
-
-/** Embed text and return it in pgvector's text format ('[0.1,0.2,...]'), or null on failure. */
-async function embed(cfg: MemoryConfig["embedding"], input: string): Promise<string | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) return null
-  try {
-    const res = await fetch(`${OPENROUTER}/embeddings`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: cfg.model, input: input.slice(0, cfg.maxInputChars) }),
-      signal: AbortSignal.timeout(cfg.timeoutMs),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> }
-    const vector = data.data?.[0]?.embedding
-    return Array.isArray(vector) ? `[${vector.join(",")}]` : null
-  } catch {
-    return null
-  }
-}
 
 /** Flatten a user/assistant content field to plain text (ignores images and tool calls). */
 function textOf(content: unknown): string {
@@ -282,20 +133,57 @@ export default async function (pi: ExtensionAPI) {
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
 
-  /** Surface via message delivery (said/thought/steered-heard). heard on a
-   *  normal prompt surfaces pre-run in before_agent_start; recall chaining
-   *  rides the recall tool result. */
+  // Blocks surfaced mid-run, waiting to piggyback on the next tool result.
+  let pendingBlocks: string[] = []
+  let agentRunning = false
+
+  /** Surface said/thought/steered-heard hits. heard on a normal prompt
+   *  surfaces pre-run in before_agent_start; recall chaining rides the
+   *  recall tool result.
+   *
+   *  Delivery must never be a message the model could mistake for a
+   *  speaker, and must never interrupt: a steer preempts queued tools
+   *  ("Skipped due to pending system advisory") and a followUp continues
+   *  the turn — a model handed a fresh message feels obliged to answer it,
+   *  so reply → capture → surface → reply loops forever (both observed
+   *  live). Mid-run hits therefore ride the next tool result (data the
+   *  model is already reading; long runs see memories promptly); leftovers
+   *  flush at agent_end and idle hits queue as nextTurn context. */
   async function surface(vector: string) {
     const block = await surfaceBlock(vector)
     if (!block) return
-    // Always nextTurn — never steer, never followUp. A steer preempts
-    // queued tools ("Skipped due to pending system advisory"); a followUp
-    // continues the turn, and a model handed a fresh message feels obliged
-    // to answer it, so reply → capture → surface → followUp → reply loops
-    // forever (observed live). nextTurn appends context the model sees
-    // alongside the next real message, and the turn actually ends.
-    pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
+    if (agentRunning) {
+      pendingBlocks.push(block)
+    } else {
+      pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
+    }
   }
+
+  const MEMORY_TOOLS = new Set(["recollect", "recall", "remember", "suppress"])
+
+  // Piggyback pending mid-run blocks on the next real tool result. Skipped
+  // for memory-tool results (their formats would blur together) and for
+  // errors (a failure should read as a failure).
+  pi.on("tool_result", async (event) => {
+    if (pendingBlocks.length === 0 || event.isError || MEMORY_TOOLS.has(event.toolName)) return
+    const text = pendingBlocks.join("\n")
+    pendingBlocks = []
+    return { content: [...event.content, { type: "text" as const, text }] }
+  })
+
+  pi.on("agent_start", async () => {
+    agentRunning = true
+  })
+
+  // A run that ends with undelivered blocks (no eligible tool call came
+  // after the last surfacing) flushes them as next-turn context.
+  pi.on("agent_end", async () => {
+    agentRunning = false
+    if (pendingBlocks.length === 0) return
+    const text = pendingBlocks.join("\n")
+    pendingBlocks = []
+    pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: text, display: true }, { deliverAs: "nextTurn" })
+  })
 
   function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
     if (!content.trim()) return
@@ -334,6 +222,7 @@ export default async function (pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     sessionId = crypto.randomUUID()
     surfacedIds = new Set()
+    pendingBlocks = []
   })
 
   // Post-compaction memories belong to a fresh session — which also makes

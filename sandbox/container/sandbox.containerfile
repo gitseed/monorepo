@@ -92,17 +92,19 @@ COPY agent-config.yml /root/.omp/agent/config.yml
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
 COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
-# OpenRouter Advisor tools — each JSON in advisers/ defines one advisor tool.
+# OpenRouter Advisor tools — each JSON in openrouter-advisor/advisors/ defines one advisor tool.
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
-COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
+COPY extensions/openrouter-advisor/advisors/ /root/.omp/agent/extensions/openrouter-advisor/advisors/
 
 # Memory extension — captures memories to the shared postgres over its unix
 # socket via Bun's native SQL bindings. Configured (incl. enabled/disabled)
-# by memory.json.
+# by memory.json. The entry point imports ./memory/{config,openrouter};
+# the subfolder is inert to omp's extension scanner (no index.ts).
 COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
-COPY memory.json /root/.omp/agent/memory.json
+COPY extensions/memory/config.ts extensions/memory/openrouter.ts /root/.omp/agent/extensions/memory/
+COPY extensions/memory/memory.json /root/.omp/agent/memory.json
 # System-prompt contract for the memory system and automatic surfacing.
-COPY APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
+COPY extensions/memory/APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
 
 # TEMPORARY: shadow the built-in read tool to drop the memory:// schema
 # mention (oh-my-pi #7673); delete once upstream PR #7675 ships.
