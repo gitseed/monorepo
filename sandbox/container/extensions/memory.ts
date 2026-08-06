@@ -26,8 +26,9 @@
 // response: heard surfaces pre-run via before_agent_start (the prompt
 // embed blocks ~300ms, then the block is in context before the model
 // responds); recall chaining rides the recall tool result; said/thought/
-// steered input queue as nextTurn context seen alongside the next real
-// message. Each memory surfaces at most once per session (cooldown).
+// steered input mid-run piggyback on the next non-memory tool result,
+// with leftovers flushed as nextTurn context at agent_end. Each memory
+// surfaces at most once per session (cooldown).
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -282,20 +283,43 @@ export default async function (pi: ExtensionAPI) {
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
 
-  /** Surface via message delivery (said/thought/steered-heard). heard on a
-   *  normal prompt surfaces pre-run in before_agent_start; recall chaining
-   *  rides the recall tool result. */
+  // Blocks surfaced mid-run, waiting to piggyback on the next tool result.
+  let pendingBlocks: string[] = []
+  let agentRunning = false
+
+  /** Surface said/thought/steered-heard hits. heard on a normal prompt
+   *  surfaces pre-run in before_agent_start; recall chaining rides the
+   *  recall tool result.
+   *
+   *  Delivery must never be a message the model could mistake for a
+   *  speaker, and must never interrupt: a steer preempts queued tools
+   *  ("Skipped due to pending system advisory") and a followUp continues
+   *  the turn — a model handed a fresh message feels obliged to answer it,
+   *  so reply → capture → surface → reply loops forever (both observed
+   *  live). Mid-run hits therefore ride the next tool result (data the
+   *  model is already reading; long runs see memories promptly); leftovers
+   *  flush at agent_end and idle hits queue as nextTurn context. */
   async function surface(vector: string) {
     const block = await surfaceBlock(vector)
     if (!block) return
-    // Always nextTurn — never steer, never followUp. A steer preempts
-    // queued tools ("Skipped due to pending system advisory"); a followUp
-    // continues the turn, and a model handed a fresh message feels obliged
-    // to answer it, so reply → capture → surface → followUp → reply loops
-    // forever (observed live). nextTurn appends context the model sees
-    // alongside the next real message, and the turn actually ends.
-    pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
+    if (agentRunning) {
+      pendingBlocks.push(block)
+    } else {
+      pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
+    }
   }
+
+  const MEMORY_TOOLS = new Set(["recollect", "recall", "remember", "suppress"])
+
+  // Piggyback pending mid-run blocks on the next real tool result. Skipped
+  // for memory-tool results (their formats would blur together) and for
+  // errors (a failure should read as a failure).
+  pi.on("tool_result", async (event) => {
+    if (pendingBlocks.length === 0 || event.isError || MEMORY_TOOLS.has(event.toolName)) return
+    const text = pendingBlocks.join("\n")
+    pendingBlocks = []
+    return { content: [...event.content, { type: "text" as const, text }] }
+  })
 
   function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
     if (!content.trim()) return
@@ -331,9 +355,24 @@ export default async function (pi: ExtensionAPI) {
     }
   })
 
+  pi.on("agent_start", async () => {
+    agentRunning = true
+  })
+
+  // A run that ends with undelivered blocks (no eligible tool call came
+  // after the last surfacing) flushes them as next-turn context.
+  pi.on("agent_end", async () => {
+    agentRunning = false
+    if (pendingBlocks.length === 0) return
+    const text = pendingBlocks.join("\n")
+    pendingBlocks = []
+    pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: text, display: true }, { deliverAs: "nextTurn" })
+  })
+
   pi.on("session_start", async () => {
     sessionId = crypto.randomUUID()
     surfacedIds = new Set()
+    pendingBlocks = []
   })
 
   // Post-compaction memories belong to a fresh session — which also makes
