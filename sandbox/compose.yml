@@ -38,8 +38,6 @@ services:
       # Postgres unix socket from memory.compose.yml — the only path between
       # sandbox and the memory database (no shared network).
       - "memory-socket:/var/run/postgresql"
-    # environment:
-    #   MEMORY_ENABLED: "1"   # uncomment to turn on the memory extension
     cap_drop:
     - NET_RAW
     - NET_ADMIN

@@ -1,0 +1,25 @@
+{
+  "enabled": false,
+  "postgres": {
+    "socketPath": "/var/run/postgresql",
+    "port": 5432,
+    "database": "memory",
+    "username": "omp",
+    "maxConnections": 2
+  },
+  "summary": {
+    "model": "deepseek/deepseek-v4-flash-0731",
+    "maxInputChars": 8000,
+    "maxTokens": 40,
+    "timeoutMs": 20000
+  },
+  "embedding": {
+    "model": "openai/text-embedding-3-small",
+    "maxInputChars": 30000,
+    "timeoutMs": 20000
+  },
+  "recollect": {
+    "defaultCount": 3,
+    "maxCount": 25
+  }
+}

@@ -1,8 +1,9 @@
 // Memory extension — passive capture plus recollect/recall/remember/suppress.
 //
-// DISABLED by default. Set MEMORY_ENABLED=1 in the sandbox environment to
-// turn it on (the postgres service and socket mount are always in place, so
-// the flag is the only switch).
+// Configured by /root/.omp/agent/memory.json (override the path with
+// MEMORY_CONFIG); missing file or keys fall back to DEFAULTS below, with
+// enabled=false, so the extension is inert until the config turns it on.
+// OPENROUTER_API_KEY stays an env var — it's a secret, not config.
 //
 // One row per memory in the `memories` table (see sandbox/memory/init.sql):
 //   heard      — something the user said (captured automatically)
@@ -15,27 +16,87 @@
 // afterward, so a slow or down model API never blocks or breaks the session.
 // A memory is invisible to recollect until its embedding lands.
 //
-// Postgres is reached over its unix socket only (omp-memory-socket volume
-// mounted at /var/run/postgresql) via Bun's native SQL bindings — no TCP.
+// Postgres is reached over its unix socket only (omp-memory-socket volume)
+// via Bun's native SQL bindings — no TCP.
 
 import { SQL } from "bun"
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"
 
-const ENABLED = process.env.MEMORY_ENABLED === "1"
-const SOCKET_DIR = process.env.MEMORY_PG_SOCKET_DIR || "/var/run/postgresql"
-const SUMMARY_MODEL = process.env.MEMORY_SUMMARY_MODEL || "deepseek/deepseek-v4-flash-0731"
-// The embedding model is baked into the schema: memories.embedding is
-// vector(1536). Switching models means re-embedding the table.
-const EMBED_MODEL = "openai/text-embedding-3-small"
+const CONFIG_PATH = process.env.MEMORY_CONFIG || "/root/.omp/agent/memory.json"
 const OPENROUTER = "https://openrouter.ai/api/v1"
-const SUMMARY_MAX_INPUT = 8_000
-// ~8k-token model limit; content keeps the full text regardless.
-const EMBED_MAX_INPUT = 30_000
-const MAX_RECOLLECT = 25
+
+interface MemoryConfig {
+  enabled: boolean
+  postgres: {
+    socketPath: string
+    port: number
+    database: string
+    username: string
+    maxConnections: number
+  }
+  summary: {
+    model: string
+    maxInputChars: number
+    maxTokens: number
+    timeoutMs: number
+  }
+  embedding: {
+    // Baked into the schema: memories.embedding is vector(1536).
+    // Switching models means re-embedding the table.
+    model: string
+    maxInputChars: number
+    timeoutMs: number
+  }
+  recollect: {
+    defaultCount: number
+    maxCount: number
+  }
+}
+
+const DEFAULTS: MemoryConfig = {
+  enabled: false,
+  postgres: {
+    socketPath: "/var/run/postgresql",
+    port: 5432,
+    database: "memory",
+    username: "omp",
+    maxConnections: 2,
+  },
+  summary: {
+    model: "deepseek/deepseek-v4-flash-0731",
+    maxInputChars: 8_000,
+    maxTokens: 40,
+    timeoutMs: 20_000,
+  },
+  embedding: {
+    model: "openai/text-embedding-3-small",
+    maxInputChars: 30_000,
+    timeoutMs: 20_000,
+  },
+  recollect: {
+    defaultCount: 3,
+    maxCount: 25,
+  },
+}
+
+async function loadConfig(): Promise<MemoryConfig> {
+  try {
+    const raw = (await Bun.file(CONFIG_PATH).json()) as Partial<MemoryConfig>
+    return {
+      enabled: raw.enabled ?? DEFAULTS.enabled,
+      postgres: { ...DEFAULTS.postgres, ...raw.postgres },
+      summary: { ...DEFAULTS.summary, ...raw.summary },
+      embedding: { ...DEFAULTS.embedding, ...raw.embedding },
+      recollect: { ...DEFAULTS.recollect, ...raw.recollect },
+    }
+  } catch {
+    return DEFAULTS
+  }
+}
 
 type Kind = "heard" | "said" | "thought" | "remembered"
 
-async function summarize(content: string): Promise<string> {
+async function summarize(cfg: MemoryConfig["summary"], content: string): Promise<string> {
   const fallback = content.split("\n")[0].slice(0, 80)
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) return fallback
@@ -44,18 +105,18 @@ async function summarize(content: string): Promise<string> {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: SUMMARY_MODEL,
-        max_tokens: 40,
+        model: cfg.model,
+        max_tokens: cfg.maxTokens,
         messages: [
           {
             role: "system",
             content:
               "Summarize the following conversation turn in one very short phrase, 12 words max. Output only the phrase.",
           },
-          { role: "user", content: content.slice(0, SUMMARY_MAX_INPUT) },
+          { role: "user", content: content.slice(0, cfg.maxInputChars) },
         ],
       }),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(cfg.timeoutMs),
     })
     if (!res.ok) return fallback
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
@@ -67,15 +128,15 @@ async function summarize(content: string): Promise<string> {
 }
 
 /** Embed text and return it in pgvector's text format ('[0.1,0.2,...]'), or null on failure. */
-async function embed(input: string): Promise<string | null> {
+async function embed(cfg: MemoryConfig["embedding"], input: string): Promise<string | null> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) return null
   try {
     const res = await fetch(`${OPENROUTER}/embeddings`, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: EMBED_MODEL, input: input.slice(0, EMBED_MAX_INPUT) }),
-      signal: AbortSignal.timeout(20_000),
+      body: JSON.stringify({ model: cfg.model, input: input.slice(0, cfg.maxInputChars) }),
+      signal: AbortSignal.timeout(cfg.timeoutMs),
     })
     if (!res.ok) return null
     const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> }
@@ -98,15 +159,16 @@ function textOf(content: unknown): string {
 
 const textResult = (t: string) => ({ content: [{ type: "text" as const, text: t }] })
 
-export default function (pi: ExtensionAPI) {
-  if (!ENABLED) return
+export default async function (pi: ExtensionAPI) {
+  const config = await loadConfig()
+  if (!config.enabled) return
 
   const sql = new SQL({
-    path: SOCKET_DIR,
-    port: 5432,
-    database: "memory",
-    username: "omp",
-    max: 2,
+    path: config.postgres.socketPath,
+    port: config.postgres.port,
+    database: config.postgres.database,
+    username: config.postgres.username,
+    max: config.postgres.maxConnections,
   })
 
   let sessionId = crypto.randomUUID()
@@ -117,11 +179,11 @@ export default function (pi: ExtensionAPI) {
       INSERT INTO memories ${sql({ session_id: sessionId, kind, content })} RETURNING id`
     const id = Number(row.id)
     void (async () => {
-      const summary = await summarize(content)
+      const summary = await summarize(config.summary, content)
       await sql`UPDATE memories SET summary = ${summary} WHERE id = ${id}`
     })().catch(() => {})
     void (async () => {
-      const vector = await embed(content)
+      const vector = await embed(config.embedding, content)
       if (vector) await sql`UPDATE memories SET embedding = ${vector}::vector WHERE id = ${id}`
     })().catch(() => {})
     return id
@@ -180,9 +242,9 @@ export default function (pi: ExtensionAPI) {
         .number()
         .int()
         .min(1)
-        .max(MAX_RECOLLECT)
+        .max(config.recollect.maxCount)
         .optional()
-        .describe("Maximum memories to return (default 3)"),
+        .describe(`Maximum memories to return (default ${config.recollect.defaultCount})`),
       min_date: z.string().optional().describe("ISO timestamp; only memories created at or after"),
       max_date: z.string().optional().describe("ISO timestamp; only memories created at or before"),
       min_text_length: z.number().int().optional().describe("Only memories at least this many chars long"),
@@ -204,7 +266,7 @@ export default function (pi: ExtensionAPI) {
         min_similarity?: number
         max_similarity?: number
       }
-      const vector = await embed(p.search_string)
+      const vector = await embed(config.embedding, p.search_string)
       if (!vector) throw new Error("embedding service unavailable; cannot search memories right now")
       const kind = p.type && p.type !== "any" ? p.type : null
       const rows = (await sql`
@@ -223,7 +285,7 @@ export default function (pi: ExtensionAPI) {
           AND (${p.max_similarity ?? null}::float8 IS NULL
                OR 1 - (embedding <=> ${vector}::vector) <= ${p.max_similarity ?? null})
         ORDER BY embedding <=> ${vector}::vector
-        LIMIT ${Math.min(p.max_count ?? 3, MAX_RECOLLECT)}`) as Array<{
+        LIMIT ${Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)}`) as Array<{
         id: number | bigint
         created_at: Date
         content_len: number
