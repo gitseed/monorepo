@@ -233,7 +233,10 @@ export default async function (pi: ExtensionAPI) {
       "Use recall with an id to read a memory's full text.",
     approval: "read",
     parameters: z.object({
-      search_string: z.string().describe("Text to match memories against (embedding similarity)"),
+      search_string: z
+        .string()
+        .min(1)
+        .describe("Text to match memories against (embedding similarity); must be non-empty"),
       type: z
         .enum(["heard", "said", "thought", "remembered", "any"])
         .optional()
@@ -265,6 +268,11 @@ export default async function (pi: ExtensionAPI) {
         include_suppressed?: boolean
         min_similarity?: number
         max_similarity?: number
+      }
+      if (!p.search_string.trim()) {
+        throw new Error(
+          "search_string is empty. recollect is similarity search, not a listing — describe what you are trying to remember",
+        )
       }
       const vector = await embed(config.embedding, p.search_string)
       if (!vector) throw new Error("embedding service unavailable; cannot search memories right now")
