@@ -23,10 +23,10 @@
 // responds); recall chaining rides the recall tool result; said/thought/
 // steered input mid-run deliver as non-interrupting asides at the next
 // agent boundary (via the session yieldQueue — no extension API exists,
-// so this reaches through AgentRegistry and degrades to piggybacking on
-// the next tool result if the internals shift), gated so a final-boundary
-// aside demotes to nextTurn instead of spawning a continuation. Each
-// memory surfaces at most once per session (cooldown).
+// so this reaches through AgentRegistry; if those internals shift, blocks
+// flush at agent_end instead, visible as end-of-run batching), gated so a
+// final-boundary aside demotes to nextTurn instead of spawning a
+// continuation. Each memory surfaces at most once per session (cooldown).
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -151,24 +151,24 @@ export default async function (pi: ExtensionAPI) {
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
 
-  // Blocks surfaced mid-run, waiting to piggyback on the next tool result
-  // (fallback delivery when the aside path is unavailable).
-  let pendingBlocks: string[] = []
   let agentRunning = false
   // True while the most recent assistant message carried tool calls — i.e.
   // the run will continue past the next boundary. Gates aside delivery so
   // a block arriving at the final boundary can't spawn a continuation.
   let runContinuing = false
-  // Blocks a gated aside build declined to deliver; flushed at agent_end.
-  let asideLeftovers: string[] = []
+  // Blocks not deliverable as mid-run asides (aside path unavailable, or a
+  // gated build declined at a final boundary); flushed at agent_end.
+  let leftoverBlocks: string[] = []
 
   // Aside delivery: omp folds "aside" messages into the run at each
   // mid-work boundary WITHOUT arming the steering interrupt — exactly the
   // delivery surfacing needs (visible, boundary-timed, non-preempting).
   // There is no extension API for it, but the host package exports
   // AgentRegistry and AgentSession.yieldQueue is public, so we enqueue
-  // through the session's own aside dispatcher. Best-effort: on any
-  // failure surfacing falls back to tool-result piggybacking.
+  // through the session's own aside dispatcher. If these internals shift
+  // upstream, asideEnqueue stays null and mid-run hits flush at agent_end
+  // instead — visible as end-of-run batching, deliberately not papered
+  // over with a quieter channel.
   let asideEnqueue: ((block: string) => void) | null = null
   let asideInstallTried = false
 
@@ -190,7 +190,7 @@ export default async function (pi: ExtensionAPI) {
             // Final boundary: delivering here would hand the model a fresh
             // message with nothing else to do but answer it — the
             // elicitation loop. Decline; agent_end flushes as nextTurn.
-            asideLeftovers.push(...blocks)
+            leftoverBlocks.push(...blocks)
             return null
           }
           return {
@@ -205,7 +205,7 @@ export default async function (pi: ExtensionAPI) {
       asideEnqueue = (block) => queue.enqueue(SURFACING_MESSAGE_TYPE, block)
     } catch {
       // Registry/session internals unavailable (upstream refactor, load
-      // order) — piggyback delivery keeps working.
+      // order) — leftoverBlocks delivery still works.
     }
   }
 
@@ -219,53 +219,19 @@ export default async function (pi: ExtensionAPI) {
    *  the turn — a model handed a fresh message feels obliged to answer it,
    *  so reply → capture → surface → reply loops forever (both observed
    *  live). Mid-run hits deliver as asides at the next agent boundary
-   *  (non-interrupting by design), falling back to riding the next tool
-   *  result; leftovers flush at agent_end and idle hits queue as nextTurn
-   *  context. */
+   *  (non-interrupting by design); leftovers flush at agent_end and idle
+   *  hits queue as nextTurn context. */
   async function surface(vector: string) {
     const block = await surfaceBlock(vector)
     if (!block) return
     if (agentRunning && asideEnqueue) {
       asideEnqueue(block)
     } else if (agentRunning) {
-      pendingBlocks.push(block)
+      leftoverBlocks.push(block)
     } else {
       pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
     }
   }
-
-  const MEMORY_TOOLS = new Set(["recollect", "recall", "remember", "suppress"])
-
-  // Surfacing tasks still in flight. Capture at message N races the tools
-  // of message N: embed + queries take ~300-600ms while a read or glob
-  // returns in milliseconds, so checking pendingBlocks alone loses every
-  // race in sparse-tool runs and everything batches at agent_end
-  // (observed live). tool_result waits briefly for in-flight tasks
-  // instead of only harvesting what already landed.
-  const inflightSurfacing = new Set<Promise<unknown>>()
-  const DELIVERY_WAIT_MS = 1_500
-
-  function trackSurfacing(task: Promise<unknown>) {
-    inflightSurfacing.add(task)
-    void task.finally(() => inflightSurfacing.delete(task)).catch(() => {})
-  }
-
-  // Piggyback pending mid-run blocks on the next real tool result. Skipped
-  // for memory-tool results (their formats would blur together) and for
-  // errors (a failure should read as a failure).
-  pi.on("tool_result", async (event) => {
-    if (event.isError || MEMORY_TOOLS.has(event.toolName)) return
-    if (pendingBlocks.length === 0 && inflightSurfacing.size > 0) {
-      await Promise.race([
-        Promise.allSettled([...inflightSurfacing]),
-        new Promise((resolve) => setTimeout(resolve, DELIVERY_WAIT_MS)),
-      ])
-    }
-    if (pendingBlocks.length === 0) return
-    const text = pendingBlocks.join("\n")
-    pendingBlocks = []
-    return { content: [...event.content, { type: "text" as const, text }] }
-  })
 
   pi.on("agent_start", async () => {
     agentRunning = true
@@ -273,15 +239,13 @@ export default async function (pi: ExtensionAPI) {
     if (!asideInstallTried) void installAsideDelivery()
   })
 
-  // A run that ends with undelivered blocks (no eligible tool call or
-  // continuing boundary came after the last surfacing) flushes them as
-  // next-turn context.
+  // A run that ends with undelivered blocks flushes them as next-turn
+  // context.
   pi.on("agent_end", async () => {
     agentRunning = false
     runContinuing = false
-    const blocks = [...pendingBlocks, ...asideLeftovers]
-    pendingBlocks = []
-    asideLeftovers = []
+    const blocks = leftoverBlocks
+    leftoverBlocks = []
     if (blocks.length === 0) return
     pi.sendMessage(
       { customType: SURFACING_MESSAGE_TYPE, content: blocks.join("\n"), display: true },
@@ -291,13 +255,12 @@ export default async function (pi: ExtensionAPI) {
 
   function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
     if (!content.trim()) return
-    const task = (async () => {
+    void (async () => {
       const { vector } = await insert(kind, content, opts?.vector)
       if (vector && (opts?.surfaceAfter ?? true)) await surface(vector)
     })().catch(() => {
       // Memory must never break the session; drop the row on DB failure.
     })
-    if (opts?.surfaceAfter ?? true) trackSurfacing(task)
   }
 
   // Pre-run surfacing for heard: embed the prompt before the agent loop
@@ -327,7 +290,7 @@ export default async function (pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     sessionId = crypto.randomUUID()
     surfacedIds = new Set()
-    pendingBlocks = []
+    leftoverBlocks = []
   })
 
   // Post-compaction memories belong to a fresh session — which also makes
