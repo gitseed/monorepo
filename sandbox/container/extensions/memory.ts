@@ -21,6 +21,7 @@
 
 import { SQL } from "bun"
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"
+import { Text } from "@oh-my-pi/pi-tui"
 
 const CONFIG_PATH = process.env.MEMORY_CONFIG || "/root/.omp/agent/memory.json"
 const OPENROUTER = "https://openrouter.ai/api/v1"
@@ -322,6 +323,19 @@ export default async function (pi: ExtensionAPI) {
       const [row] = (await sql`SELECT content FROM memories WHERE id = ${id}`) as Array<{ content: string }>
       if (!row) throw new Error(`no memory with id ${id}`)
       return textResult(row.content)
+    },
+    // omp's TUI falls back to a name-keyed renderer registry, and "recall"
+    // is taken by its built-in memory tool — whose renderer reads a details
+    // shape ours doesn't have and displays "no matches" over perfectly good
+    // results. Defining our own renderers takes priority over that fallback.
+    renderCall(args, _options, theme) {
+      return new Text(theme.fg("muted", `recall #${(args as { id: number }).id}`), 0, 0)
+    },
+    renderResult(result, options, theme) {
+      const first = result.content?.[0]
+      const body = first && first.type === "text" ? first.text : ""
+      const shown = options.expanded ? body : `${body.split("\n")[0].slice(0, 120)}${body.length > 120 || body.includes("\n") ? " …" : ""}`
+      return new Text(theme.fg("text", shown), 0, 0)
     },
   })
 
