@@ -179,6 +179,11 @@ export default async function (pi: ExtensionAPI) {
 
   let sessionId = crypto.randomUUID()
 
+  // Summaries of memories this process has touched, so recall's TUI line
+  // can show recall(<summary>) instead of an opaque id. renderCall is
+  // synchronous — it can only show what's already cached.
+  const summaryById = new Map<number, string>()
+
   /** Insert a memory now; summary and embedding fill in asynchronously. */
   async function insert(kind: Kind, content: string): Promise<number> {
     const [row] = await sql`
@@ -313,6 +318,7 @@ export default async function (pi: ExtensionAPI) {
         full_text_length: r.content_len,
         summary: r.summary,
       }))
+      for (const m of memories) if (m.summary) summaryById.set(m.id, m.summary)
       return textResult(JSON.stringify(memories, null, 2))
     },
   })
@@ -327,8 +333,12 @@ export default async function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       const { id } = params as { id: number }
-      const [row] = (await sql`SELECT content FROM memories WHERE id = ${id}`) as Array<{ content: string }>
+      const [row] = (await sql`SELECT content, summary FROM memories WHERE id = ${id}`) as Array<{
+        content: string
+        summary: string | null
+      }>
       if (!row) throw new Error(`no memory with id ${id}`)
+      if (row.summary) summaryById.set(id, row.summary)
       return textResult(row.content)
     },
     // omp's TUI falls back to a name-keyed renderer registry, and "recall"
@@ -336,7 +346,9 @@ export default async function (pi: ExtensionAPI) {
     // shape ours doesn't have and displays "no matches" over perfectly good
     // results. Defining our own renderers takes priority over that fallback.
     renderCall(args, _options, theme) {
-      return new Text(theme.fg("muted", `recall #${(args as { id: number }).id}`), 0, 0)
+      const { id } = args as { id: number }
+      const summary = summaryById.get(id)
+      return new Text(theme.fg("muted", summary ? `recall(${summary})` : `recall(#${id})`), 0, 0)
     },
     renderResult(result, options, theme) {
       const first = result.content?.[0]
