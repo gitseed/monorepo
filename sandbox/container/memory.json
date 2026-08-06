@@ -21,5 +21,11 @@
   "recollect": {
     "defaultCount": 3,
     "maxCount": 25
+  },
+  "surfacing": {
+    "enabled": false,
+    "minSimilarity": 0.55,
+    "maxSimilarity": 0.95,
+    "perKindLimit": 2
   }
 }

@@ -1,4 +1,5 @@
-// Memory extension — passive capture plus recollect/recall/remember/suppress.
+// Memory extension — passive capture, recollect/recall/remember/suppress
+// tools, and unprompted surfacing.
 //
 // Configured by /root/.omp/agent/memory.json (override the path with
 // MEMORY_CONFIG); missing file or keys fall back to DEFAULTS below, with
@@ -11,11 +12,19 @@
 //   thought    — an agent thinking block (captured automatically)
 //   remembered — explicitly saved via the remember tool
 //
-// Rows are inserted synchronously; the summary (small model on OpenRouter)
-// and the content embedding (OpenRouter /embeddings) fill in asynchronously
-// afterward, so a slow or down model API never blocks or breaks the session.
-// On failure the column stays NULL — failures stay visible, nothing is
-// fabricated. A memory is invisible to recollect until its embedding lands.
+// Captured content is embedded first, then inserted with its vector; the
+// summary backfills asynchronously. On failure the column stays NULL —
+// failures stay visible, nothing is fabricated. A memory is invisible to
+// recollect and surfacing until its embedding lands.
+//
+// Unprompted surfacing (surfacing.enabled): every heard/said/thought event
+// reuses the vector already computed for the write to run four per-kind
+// similarity queries against other sessions, and injects the hits as a
+// <recollected> block (see APPEND_SYSTEM.md for the model-facing contract).
+// Injections are custom-role messages, so capture can never see them:
+// surfaced memories must not become memories. Mid-turn hits deliver at the
+// next agent boundary (steer); idle hits append for the next turn without
+// starting one.
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -26,6 +35,7 @@ import { Text } from "@oh-my-pi/pi-tui"
 
 const CONFIG_PATH = process.env.MEMORY_CONFIG || "/root/.omp/agent/memory.json"
 const OPENROUTER = "https://openrouter.ai/api/v1"
+const SURFACING_MESSAGE_TYPE = "memory-recollection"
 
 interface MemoryConfig {
   enabled: boolean
@@ -53,6 +63,12 @@ interface MemoryConfig {
     defaultCount: number
     maxCount: number
   }
+  surfacing: {
+    enabled: boolean
+    minSimilarity: number
+    maxSimilarity: number
+    perKindLimit: number
+  }
 }
 
 const DEFAULTS: MemoryConfig = {
@@ -79,6 +95,14 @@ const DEFAULTS: MemoryConfig = {
     defaultCount: 3,
     maxCount: 25,
   },
+  surfacing: {
+    enabled: false,
+    // min gates relevance; max is the anti-déjà-vu filter — near-identical
+    // memories (the same exchange from a past session) don't resurface.
+    minSimilarity: 0.55,
+    maxSimilarity: 0.95,
+    perKindLimit: 2,
+  },
 }
 
 async function loadConfig(): Promise<MemoryConfig> {
@@ -90,6 +114,7 @@ async function loadConfig(): Promise<MemoryConfig> {
       summary: { ...DEFAULTS.summary, ...raw.summary },
       embedding: { ...DEFAULTS.embedding, ...raw.embedding },
       recollect: { ...DEFAULTS.recollect, ...raw.recollect },
+      surfacing: { ...DEFAULTS.surfacing, ...raw.surfacing },
     }
   } catch {
     return DEFAULTS
@@ -97,6 +122,7 @@ async function loadConfig(): Promise<MemoryConfig> {
 }
 
 type Kind = "heard" | "said" | "thought" | "remembered"
+const KINDS: Kind[] = ["heard", "said", "thought", "remembered"]
 
 /** One-phrase summary from the summary model, or null on any failure. No
  *  fabricated stand-ins: a NULL summary column is the loud, queryable
@@ -178,31 +204,77 @@ export default async function (pi: ExtensionAPI) {
   })
 
   let sessionId = crypto.randomUUID()
+  let agentRunning = false
 
   // Summaries of memories this process has touched, so recall's TUI line
   // can show recall(<summary>) instead of an opaque id. renderCall is
   // synchronous — it can only show what's already cached.
   const summaryById = new Map<number, string>()
 
-  /** Insert a memory now; summary and embedding fill in asynchronously. */
-  async function insert(kind: Kind, content: string): Promise<number> {
+  /** Embed then insert a memory (vector lands with the row; NULL if the
+   *  embed failed). The summary backfills asynchronously. */
+  async function insert(kind: Kind, content: string): Promise<{ id: number; vector: string | null }> {
+    const vector = await embed(config.embedding, content)
     const [row] = await sql`
-      INSERT INTO memories ${sql({ session_id: sessionId, kind, content })} RETURNING id`
+      INSERT INTO memories (session_id, kind, content, embedding)
+      VALUES (${sessionId}, ${kind}, ${content}, ${vector}::vector)
+      RETURNING id`
     const id = Number(row.id)
     void (async () => {
       const summary = await summarize(config.summary, content)
       if (summary) await sql`UPDATE memories SET summary = ${summary} WHERE id = ${id}`
     })().catch(() => {})
-    void (async () => {
-      const vector = await embed(config.embedding, content)
-      if (vector) await sql`UPDATE memories SET embedding = ${vector}::vector WHERE id = ${id}`
-    })().catch(() => {})
-    return id
+    return { id, vector }
+  }
+
+  /** Similarity-search other sessions with an already-computed vector and
+   *  inject the hits as a <recollected> block. Four per-kind queries so no
+   *  one kind monopolizes the feed. */
+  async function surface(vector: string) {
+    if (!config.surfacing.enabled) return
+    // TODO: cooldown set — skip memories surfaced recently in this session,
+    // so thought-triggered surfacing can't re-surface what just surfaced.
+    const perKind = await Promise.all(
+      KINDS.map(
+        (k) =>
+          sql`
+        SELECT id, kind, created_at, summary
+        FROM memories
+        WHERE session_id <> ${sessionId}
+          AND kind = ${k}
+          AND NOT suppressed
+          AND embedding IS NOT NULL
+          AND 1 - (embedding <=> ${vector}::vector) >= ${config.surfacing.minSimilarity}
+          AND 1 - (embedding <=> ${vector}::vector) <= ${config.surfacing.maxSimilarity}
+        ORDER BY embedding <=> ${vector}::vector
+        LIMIT ${config.surfacing.perKindLimit}` as Promise<
+            Array<{ id: number | bigint; kind: Kind; created_at: Date; summary: string | null }>
+          >,
+      ),
+    )
+    const rows = perKind.flat()
+    if (rows.length === 0) return
+    const lines = rows.map((r) => {
+      const id = Number(r.id)
+      if (r.summary) summaryById.set(id, r.summary)
+      const date = r.created_at.toISOString().slice(0, 10)
+      return `[memory ${id} · ${r.kind} · ${date}] ${r.summary ?? "(not yet summarized — recall to read)"}`
+    })
+    // Mid-turn: default delivery steers at the next agent boundary. Idle:
+    // nextTurn without triggerTurn appends to history and never starts a
+    // turn on its own.
+    pi.sendMessage(
+      { customType: SURFACING_MESSAGE_TYPE, content: `<recollected>\n${lines.join("\n")}\n</recollected>`, display: true },
+      agentRunning ? undefined : { deliverAs: "nextTurn" },
+    )
   }
 
   function record(kind: Kind, content: string) {
     if (!content.trim()) return
-    void insert(kind, content).catch(() => {
+    void (async () => {
+      const { vector } = await insert(kind, content)
+      if (vector) await surface(vector)
+    })().catch(() => {
       // Memory must never break the session; drop the row on DB failure.
     })
   }
@@ -218,6 +290,17 @@ export default async function (pi: ExtensionAPI) {
     sessionId = crypto.randomUUID()
   })
 
+  pi.on("agent_start", async () => {
+    agentRunning = true
+  })
+
+  pi.on("agent_end", async () => {
+    agentRunning = false
+  })
+
+  // Only user/assistant messages are captured. Surfacing injections are
+  // role "custom" and land outside both branches: surfaced memories must
+  // never become memories.
   pi.on("message_end", async (event) => {
     const message = event.message as { role: string; content: unknown }
     if (message.role === "user") {
@@ -231,6 +314,16 @@ export default async function (pi: ExtensionAPI) {
       }
       record("said", textOf(message.content))
     }
+  })
+
+  // Dim per-memory lines in the TUI where the <recollected> block lands.
+  pi.registerMessageRenderer(SURFACING_MESSAGE_TYPE, (message, _options, theme) => {
+    const content = typeof message.content === "string" ? message.content : ""
+    const lines = content
+      .split("\n")
+      .filter((l) => l.startsWith("["))
+      .map((l) => `✱ ${l}`)
+    return new Text(theme.fg("muted", lines.join("\n")), 0, 0)
   })
 
   const { z } = pi.zod
@@ -333,12 +426,18 @@ export default async function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       const { id } = params as { id: number }
-      const [row] = (await sql`SELECT content, summary FROM memories WHERE id = ${id}`) as Array<{
+      const [row] = (await sql`
+        SELECT content, summary, embedding::text AS embedding FROM memories WHERE id = ${id}`) as Array<{
         content: string
         summary: string | null
+        embedding: string | null
       }>
       if (!row) throw new Error(`no memory with id ${id}`)
       if (row.summary) summaryById.set(id, row.summary)
+      // Associative chaining: reading a memory surfaces its neighbors, via
+      // the stored vector. The recalled memory itself sits at similarity
+      // 1.0, above the déjà-vu ceiling, so it never resurfaces to itself.
+      if (row.embedding) void surface(row.embedding).catch(() => {})
       return textResult(row.content)
     },
     // omp's TUI falls back to a name-keyed renderer registry, and "recall"
@@ -353,7 +452,9 @@ export default async function (pi: ExtensionAPI) {
     renderResult(result, options, theme) {
       const first = result.content?.[0]
       const body = first && first.type === "text" ? first.text : ""
-      const shown = options.expanded ? body : `${body.split("\n")[0].slice(0, 120)}${body.length > 120 || body.includes("\n") ? " …" : ""}`
+      const shown = options.expanded
+        ? body
+        : `${body.split("\n")[0].slice(0, 120)}${body.length > 120 || body.includes("\n") ? " …" : ""}`
       return new Text(theme.fg("text", shown), 0, 0)
     },
   })
@@ -371,7 +472,7 @@ export default async function (pi: ExtensionAPI) {
     async execute(_id, params) {
       const { text: content } = params as { text: string }
       if (!content.trim()) throw new Error("cannot remember empty text")
-      const id = await insert("remembered", content)
+      const { id } = await insert("remembered", content)
       return textResult(JSON.stringify({ id }))
     },
   })
@@ -381,7 +482,7 @@ export default async function (pi: ExtensionAPI) {
     label: "Suppress",
     description:
       "Suppress a memory that is unhelpful, unimportant or uncomfortable. " +
-      "Suppressed memories are hidden from recollect unless include_suppressed is set.",
+      "Suppressed memories are hidden from recollect and automatic surfacing unless include_suppressed is set.",
     approval: "write",
     parameters: z.object({
       id: z.number().int().describe("Memory id"),
