@@ -14,7 +14,8 @@
 // Rows are inserted synchronously; the summary (small model on OpenRouter)
 // and the content embedding (OpenRouter /embeddings) fill in asynchronously
 // afterward, so a slow or down model API never blocks or breaks the session.
-// A memory is invisible to recollect until its embedding lands.
+// On failure the column stays NULL — failures stay visible, nothing is
+// fabricated. A memory is invisible to recollect until its embedding lands.
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -97,10 +98,12 @@ async function loadConfig(): Promise<MemoryConfig> {
 
 type Kind = "heard" | "said" | "thought" | "remembered"
 
-async function summarize(cfg: MemoryConfig["summary"], content: string): Promise<string> {
-  const fallback = content.split("\n")[0].slice(0, 80)
+/** One-phrase summary from the summary model, or null on any failure. No
+ *  fabricated stand-ins: a NULL summary column is the loud, queryable
+ *  signal that summarization failed or hasn't run. */
+async function summarize(cfg: MemoryConfig["summary"], content: string): Promise<string | null> {
   const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) return fallback
+  if (!apiKey) return null
   try {
     const res = await fetch(`${OPENROUTER}/chat/completions`, {
       method: "POST",
@@ -108,6 +111,9 @@ async function summarize(cfg: MemoryConfig["summary"], content: string): Promise
       body: JSON.stringify({
         model: cfg.model,
         max_tokens: cfg.maxTokens,
+        // Reasoning burns the whole token budget before any content lands
+        // (finish_reason "length", content null).
+        reasoning: { enabled: false },
         messages: [
           {
             role: "system",
@@ -119,12 +125,11 @@ async function summarize(cfg: MemoryConfig["summary"], content: string): Promise
       }),
       signal: AbortSignal.timeout(cfg.timeoutMs),
     })
-    if (!res.ok) return fallback
+    if (!res.ok) return null
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    const summary = data.choices?.[0]?.message?.content?.trim()
-    return summary || fallback
+    return data.choices?.[0]?.message?.content?.trim() || null
   } catch {
-    return fallback
+    return null
   }
 }
 
@@ -181,7 +186,7 @@ export default async function (pi: ExtensionAPI) {
     const id = Number(row.id)
     void (async () => {
       const summary = await summarize(config.summary, content)
-      await sql`UPDATE memories SET summary = ${summary} WHERE id = ${id}`
+      if (summary) await sql`UPDATE memories SET summary = ${summary} WHERE id = ${id}`
     })().catch(() => {})
     void (async () => {
       const vector = await embed(config.embedding, content)
