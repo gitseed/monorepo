@@ -80,9 +80,10 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 
 # Terminal type for interactive shells — emacs-nox needs a real terminal
-# to interpret Home/End/function keys (fn+left, fn+right). The omp CLI
-# overrides TERM=dumb for its own bash tool sandbox, so this only affects
-# interactive sessions.
+# to interpret Home/End/function keys (fn+left, fn+right). The omp broker
+# already sets TERM=xterm-256color for terminal workers; this is a fallback
+# for non-broker shells (e.g. docker exec). The agent's own bash tool gets
+# TERM=dumb per-call via non-interactive-env, so this doesn't affect it.
 ENV TERM=xterm-256color
 
 # Placeholder so omp considers the provider available.
@@ -94,7 +95,9 @@ ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
 # No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
 
-# Emacs init — binds Home/End (fn+left/right) across terminal escape sequence variants.
+# Emacs init — fixes fn+right (End) which was broken because \e[4~ maps to
+# [select] instead of [end] in the xterm terminfo. The init overrides this
+# in input-decode-map so both Home and End work in any cursor key mode.
 COPY emacs-init.el /root/.emacs.d/init.el
 
 COPY agent-config.yml /root/.omp/agent/config.yml
