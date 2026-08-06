@@ -22,11 +22,12 @@
 // similarity queries against other sessions, and injects the hits as a
 // <recollected> block (see APPEND_SYSTEM.md for the model-facing contract).
 // Injections are custom-role messages, so capture can never see them:
-// surfaced memories must not become memories. Delivery: heard surfaces
-// pre-run via before_agent_start (the prompt embed blocks ~300ms, then the
-// block is in context before the model responds); said/thought/steered
-// input and recall chaining deliver followUp at the end of the current
-// run; idle hits append for the next turn without starting one.
+// surfaced memories must not become memories. Delivery never elicits a
+// response: heard surfaces pre-run via before_agent_start (the prompt
+// embed blocks ~300ms, then the block is in context before the model
+// responds); recall chaining rides the recall tool result; said/thought/
+// steered input queue as nextTurn context seen alongside the next real
+// message. Each memory surfaces at most once per session (cooldown).
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -206,7 +207,6 @@ export default async function (pi: ExtensionAPI) {
   })
 
   let sessionId = crypto.randomUUID()
-  let agentRunning = false
 
   // Summaries of memories this process has touched, so recall's TUI line
   // can show recall(<summary>) instead of an opaque id. renderCall is
@@ -234,13 +234,18 @@ export default async function (pi: ExtensionAPI) {
     return { id, vector }
   }
 
+  // Cooldown: a memory surfaces at most once per session. Without this,
+  // thought-triggered surfacing re-surfaces the same hits event after
+  // event (observed live: identical ids recurring in every block).
+  let surfacedIds = new Set<number>()
+
   /** Similarity-search other sessions with an already-computed vector and
    *  build the <recollected> block, or null when nothing clears the
-   *  thresholds. Four per-kind queries so no one kind monopolizes the feed. */
+   *  thresholds. Four per-kind queries so no one kind monopolizes the
+   *  feed. Hits enter the cooldown set. */
   async function surfaceBlock(vector: string): Promise<string | null> {
     if (!config.surfacing.enabled) return null
-    // TODO: cooldown set — skip memories surfaced recently in this session,
-    // so thought-triggered surfacing can't re-surface what just surfaced.
+    const cooled = `{${[...surfacedIds].join(",")}}`
     const perKind = await Promise.all(
       KINDS.map(
         (k) =>
@@ -250,6 +255,7 @@ export default async function (pi: ExtensionAPI) {
         WHERE session_id <> ${sessionId}
           AND kind = ${k}
           AND NOT suppressed
+          AND id <> ALL(${cooled}::bigint[])
           AND embedding IS NOT NULL
           AND 1 - (embedding <=> ${vector}::vector) >= ${config.surfacing.minSimilarity}
           AND 1 - (embedding <=> ${vector}::vector) <= ${config.surfacing.maxSimilarity}
@@ -263,6 +269,7 @@ export default async function (pi: ExtensionAPI) {
     if (rows.length === 0) return null
     const lines = rows.map((r) => {
       const id = Number(r.id)
+      surfacedIds.add(id)
       if (r.summary) summaryById.set(id, r.summary)
       const date = r.created_at.toISOString().slice(0, 10)
       return `[memory ${id} · ${r.kind} · ${date}] ${r.summary ?? "(not yet summarized — recall to read)"}`
@@ -270,23 +277,19 @@ export default async function (pi: ExtensionAPI) {
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
 
-  /** Surface via message delivery (said/thought/steered-heard/recall
-   *  chaining). heard on a normal prompt surfaces pre-run instead, in the
-   *  before_agent_start handler below. */
+  /** Surface via message delivery (said/thought/steered-heard). heard on a
+   *  normal prompt surfaces pre-run in before_agent_start; recall chaining
+   *  rides the recall tool result. */
   async function surface(vector: string) {
     const block = await surfaceBlock(vector)
     if (!block) return
-    // Mid-turn delivery MUST be followUp, never steer (the default): a
-    // pending steer triggers omp's interrupt state, which preempts every
-    // queued-but-unstarted tool as "Skipped due to pending system advisory".
-    // Since thinking itself triggers surfacing, steering here turns every
-    // hit into a self-inflicted interrupt storm that blocks the agent's own
-    // tools. followUp queues without interrupting and lands when the run
-    // finishes. Idle: nextTurn appends to history without starting a turn.
-    pi.sendMessage(
-      { customType: SURFACING_MESSAGE_TYPE, content: block, display: true },
-      { deliverAs: agentRunning ? "followUp" : "nextTurn" },
-    )
+    // Always nextTurn — never steer, never followUp. A steer preempts
+    // queued tools ("Skipped due to pending system advisory"); a followUp
+    // continues the turn, and a model handed a fresh message feels obliged
+    // to answer it, so reply → capture → surface → followUp → reply loops
+    // forever (observed live). nextTurn appends context the model sees
+    // alongside the next real message, and the turn actually ends.
+    pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
   }
 
   function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
@@ -325,21 +328,16 @@ export default async function (pi: ExtensionAPI) {
 
   pi.on("session_start", async () => {
     sessionId = crypto.randomUUID()
+    surfacedIds = new Set()
   })
 
   // Post-compaction memories belong to a fresh session — which also makes
   // everything from before the compaction "another session", i.e. exactly
-  // what recollect is allowed to surface.
+  // what recollect is allowed to surface. The cooldown resets with it: the
+  // new context window has not seen those memories.
   pi.on("session_compact", async () => {
     sessionId = crypto.randomUUID()
-  })
-
-  pi.on("agent_start", async () => {
-    agentRunning = true
-  })
-
-  pi.on("agent_end", async () => {
-    agentRunning = false
+    surfacedIds = new Set()
   })
 
   // Only user/assistant messages are captured. Surfacing injections are
@@ -489,11 +487,13 @@ export default async function (pi: ExtensionAPI) {
       }>
       if (!row) throw new Error(`no memory with id ${id}`)
       if (row.summary) summaryById.set(id, row.summary)
-      // Associative chaining: reading a memory surfaces its neighbors, via
-      // the stored vector. The recalled memory itself sits at similarity
-      // 1.0, above the déjà-vu ceiling, so it never resurfaces to itself.
-      if (row.embedding) void surface(row.embedding).catch(() => {})
-      return textResult(row.content)
+      // Associative chaining: reading a memory surfaces its neighbors via
+      // the stored vector, delivered inside this tool result — a message
+      // would elicit a response. The recalled memory itself sits at
+      // similarity 1.0, above the déjà-vu ceiling, so it never resurfaces
+      // to itself.
+      const related = row.embedding ? await surfaceBlock(row.embedding).catch(() => null) : null
+      return textResult(related ? `${row.content}\n\n${related}` : row.content)
     },
     // omp's TUI falls back to a name-keyed renderer registry, and "recall"
     // is taken by its built-in memory tool — whose renderer reads a details
