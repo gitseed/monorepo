@@ -10,10 +10,12 @@
 (electric-pair-mode 1)
 (delete-selection-mode 1)
 
-;; Less clutter
-(menu-bar-mode -1)
-(tool-bar-mode -1)
-(scroll-bar-mode -1)
+;; Less clutter. GUI chrome modes can be absent from nox builds
+;; (scroll-bar-mode is void on this one); an unguarded call aborts the
+;; rest of this file — including the key bindings below.
+(when (fboundp 'menu-bar-mode) (menu-bar-mode -1))
+(when (fboundp 'tool-bar-mode) (tool-bar-mode -1))
+(when (fboundp 'scroll-bar-mode) (scroll-bar-mode -1))
 
 ;; Stop creating backup/~ files
 (setq make-backup-files nil)
@@ -31,6 +33,3 @@
 (global-set-key (kbd "\eOF") 'end-of-line)
 (global-set-key (kbd "\e[H") 'beginning-of-line)
 (global-set-key (kbd "\e[F") 'end-of-line)
-
-;; Also bind C-a/C-e as fallbacks (these work in any terminal)
-;; (Emacs already has these by default, just documenting here.)
