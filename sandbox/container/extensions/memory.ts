@@ -490,9 +490,18 @@ export default async function (pi: ExtensionAPI) {
     async execute(_id, params) {
       const { id } = params as { id: number }
       const [row] = (await sql`
-        UPDATE memories SET suppressed = true WHERE id = ${id} RETURNING id`) as Array<{ id: number | bigint }>
+        UPDATE memories SET suppressed = true WHERE id = ${id} RETURNING id, summary`) as Array<{
+        id: number | bigint
+        summary: string | null
+      }>
       if (!row) throw new Error(`no memory with id ${id}`)
+      if (row.summary) summaryById.set(id, row.summary)
       return textResult(`suppressed memory ${id}`)
+    },
+    renderCall(args, _options, theme) {
+      const { id } = args as { id: number }
+      const summary = summaryById.get(id)
+      return new Text(theme.fg("muted", summary ? `suppress(${summary})` : `suppress(#${id})`), 0, 0)
     },
   })
 }
