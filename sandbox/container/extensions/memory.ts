@@ -21,9 +21,12 @@
 // response: heard surfaces pre-run via before_agent_start (the prompt
 // embed blocks ~300ms, then the block is in context before the model
 // responds); recall chaining rides the recall tool result; said/thought/
-// steered input mid-run piggyback on the next non-memory tool result,
-// with leftovers flushed as nextTurn context at agent_end. Each memory
-// surfaces at most once per session (cooldown).
+// steered input mid-run deliver as non-interrupting asides at the next
+// agent boundary (via the session yieldQueue — no extension API exists,
+// so this reaches through AgentRegistry and degrades to piggybacking on
+// the next tool result if the internals shift), gated so a final-boundary
+// aside demotes to nextTurn instead of spawning a continuation. Each
+// memory surfaces at most once per session (cooldown).
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -148,9 +151,63 @@ export default async function (pi: ExtensionAPI) {
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
 
-  // Blocks surfaced mid-run, waiting to piggyback on the next tool result.
+  // Blocks surfaced mid-run, waiting to piggyback on the next tool result
+  // (fallback delivery when the aside path is unavailable).
   let pendingBlocks: string[] = []
   let agentRunning = false
+  // True while the most recent assistant message carried tool calls — i.e.
+  // the run will continue past the next boundary. Gates aside delivery so
+  // a block arriving at the final boundary can't spawn a continuation.
+  let runContinuing = false
+  // Blocks a gated aside build declined to deliver; flushed at agent_end.
+  let asideLeftovers: string[] = []
+
+  // Aside delivery: omp folds "aside" messages into the run at each
+  // mid-work boundary WITHOUT arming the steering interrupt — exactly the
+  // delivery surfacing needs (visible, boundary-timed, non-preempting).
+  // There is no extension API for it, but the host package exports
+  // AgentRegistry and AgentSession.yieldQueue is public, so we enqueue
+  // through the session's own aside dispatcher. Best-effort: on any
+  // failure surfacing falls back to tool-result piggybacking.
+  let asideEnqueue: ((block: string) => void) | null = null
+  let asideInstallTried = false
+
+  async function installAsideDelivery() {
+    asideInstallTried = true
+    try {
+      const host = await import("@oh-my-pi/pi-coding-agent")
+      const refs = host.AgentRegistry.global().list()
+      const main = refs.find((r) => r.id === host.MAIN_AGENT_ID) ?? refs.find((r) => r.kind === "main")
+      const queue = main?.session?.yieldQueue
+      if (!queue) return
+      queue.register<string>(SURFACING_MESSAGE_TYPE, {
+        // Never trigger the idle flush: idle surfacing goes out as a
+        // nextTurn message instead, and an idle-flushed aside could start
+        // a turn on its own.
+        skipIdleFlush: true,
+        build: (blocks) => {
+          if (!runContinuing) {
+            // Final boundary: delivering here would hand the model a fresh
+            // message with nothing else to do but answer it — the
+            // elicitation loop. Decline; agent_end flushes as nextTurn.
+            asideLeftovers.push(...blocks)
+            return null
+          }
+          return {
+            role: "custom",
+            customType: SURFACING_MESSAGE_TYPE,
+            content: blocks.join("\n"),
+            display: true,
+            timestamp: Date.now(),
+          }
+        },
+      })
+      asideEnqueue = (block) => queue.enqueue(SURFACING_MESSAGE_TYPE, block)
+    } catch {
+      // Registry/session internals unavailable (upstream refactor, load
+      // order) — piggyback delivery keeps working.
+    }
+  }
 
   /** Surface said/thought/steered-heard hits. heard on a normal prompt
    *  surfaces pre-run in before_agent_start; recall chaining rides the
@@ -161,13 +218,16 @@ export default async function (pi: ExtensionAPI) {
    *  ("Skipped due to pending system advisory") and a followUp continues
    *  the turn — a model handed a fresh message feels obliged to answer it,
    *  so reply → capture → surface → reply loops forever (both observed
-   *  live). Mid-run hits therefore ride the next tool result (data the
-   *  model is already reading; long runs see memories promptly); leftovers
-   *  flush at agent_end and idle hits queue as nextTurn context. */
+   *  live). Mid-run hits deliver as asides at the next agent boundary
+   *  (non-interrupting by design), falling back to riding the next tool
+   *  result; leftovers flush at agent_end and idle hits queue as nextTurn
+   *  context. */
   async function surface(vector: string) {
     const block = await surfaceBlock(vector)
     if (!block) return
-    if (agentRunning) {
+    if (agentRunning && asideEnqueue) {
+      asideEnqueue(block)
+    } else if (agentRunning) {
       pendingBlocks.push(block)
     } else {
       pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: block, display: true }, { deliverAs: "nextTurn" })
@@ -209,16 +269,24 @@ export default async function (pi: ExtensionAPI) {
 
   pi.on("agent_start", async () => {
     agentRunning = true
+    // Session and registry exist by the first run; the factory is too early.
+    if (!asideInstallTried) void installAsideDelivery()
   })
 
-  // A run that ends with undelivered blocks (no eligible tool call came
-  // after the last surfacing) flushes them as next-turn context.
+  // A run that ends with undelivered blocks (no eligible tool call or
+  // continuing boundary came after the last surfacing) flushes them as
+  // next-turn context.
   pi.on("agent_end", async () => {
     agentRunning = false
-    if (pendingBlocks.length === 0) return
-    const text = pendingBlocks.join("\n")
+    runContinuing = false
+    const blocks = [...pendingBlocks, ...asideLeftovers]
     pendingBlocks = []
-    pi.sendMessage({ customType: SURFACING_MESSAGE_TYPE, content: text, display: true }, { deliverAs: "nextTurn" })
+    asideLeftovers = []
+    if (blocks.length === 0) return
+    pi.sendMessage(
+      { customType: SURFACING_MESSAGE_TYPE, content: blocks.join("\n"), display: true },
+      { deliverAs: "nextTurn" },
+    )
   })
 
   function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
@@ -291,6 +359,9 @@ export default async function (pi: ExtensionAPI) {
       }
     } else if (message.role === "assistant") {
       const blocks = Array.isArray(message.content) ? message.content : []
+      // Tool calls in this message mean the run continues past the next
+      // boundary — the window where aside delivery is safe.
+      runContinuing = blocks.some((b) => b?.type === "toolCall")
       for (const block of blocks) {
         if (block?.type === "thinking" && typeof block.thinking === "string") {
           record("thought", block.thinking)
