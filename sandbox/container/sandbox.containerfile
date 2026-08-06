@@ -101,6 +101,8 @@ COPY extensions/advisors/ /root/.omp/agent/extensions/advisors/
 # by memory.json.
 COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
 COPY memory.json /root/.omp/agent/memory.json
+# System-prompt contract for the memory system and automatic surfacing.
+COPY APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
 
 # TEMPORARY: shadow the built-in read tool to drop the memory:// schema
 # mention (oh-my-pi #7673); delete once upstream PR #7675 ships.
