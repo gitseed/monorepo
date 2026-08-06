@@ -536,27 +536,29 @@ export default async function (pi: ExtensionAPI) {
     name: "suppress",
     label: "Suppress",
     description:
-      "Suppress a memory that is unhelpful, unimportant or uncomfortable. " +
+      "Suppress a memory that is unhelpful, unimportant or uncomfortable — or restore one with suppressed: false. " +
       "Suppressed memories are hidden from recollect and automatic surfacing unless include_suppressed is set.",
     approval: "write",
     parameters: z.object({
       id: z.number().int().describe("Memory id"),
+      suppressed: z.boolean().optional().describe("Target state; false restores a suppressed memory (default true)"),
     }),
     async execute(_id, params) {
-      const { id } = params as { id: number }
+      const { id, suppressed = true } = params as { id: number; suppressed?: boolean }
       const [row] = (await sql`
-        UPDATE memories SET suppressed = true WHERE id = ${id} RETURNING id, summary`) as Array<{
+        UPDATE memories SET suppressed = ${suppressed} WHERE id = ${id} RETURNING id, summary`) as Array<{
         id: number | bigint
         summary: string | null
       }>
       if (!row) throw new Error(`no memory with id ${id}`)
       if (row.summary) summaryById.set(id, row.summary)
-      return textResult(`suppressed memory ${id}`)
+      return textResult(`${suppressed ? "suppressed" : "unsuppressed"} memory ${id}`)
     },
     renderCall(args, _options, theme) {
-      const { id } = args as { id: number }
+      const { id, suppressed } = args as { id: number; suppressed?: boolean }
+      const verb = suppressed === false ? "unsuppress" : "suppress"
       const summary = summaryById.get(id)
-      return new Text(theme.fg("muted", summary ? `suppress(${summary})` : `suppress(#${id})`), 0, 0)
+      return new Text(theme.fg("muted", summary ? `${verb}(${summary})` : `${verb}(#${id})`), 0, 0)
     },
   })
 }
