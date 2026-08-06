@@ -22,9 +22,11 @@
 // similarity queries against other sessions, and injects the hits as a
 // <recollected> block (see APPEND_SYSTEM.md for the model-facing contract).
 // Injections are custom-role messages, so capture can never see them:
-// surfaced memories must not become memories. Mid-turn hits deliver at the
-// next agent boundary (steer); idle hits append for the next turn without
-// starting one.
+// surfaced memories must not become memories. Delivery: heard surfaces
+// pre-run via before_agent_start (the prompt embed blocks ~300ms, then the
+// block is in context before the model responds); said/thought/steered
+// input and recall chaining deliver followUp at the end of the current
+// run; idle hits append for the next turn without starting one.
 //
 // Postgres is reached over its unix socket only (omp-memory-socket volume)
 // via Bun's native SQL bindings — no TCP.
@@ -212,9 +214,14 @@ export default async function (pi: ExtensionAPI) {
   const summaryById = new Map<number, string>()
 
   /** Embed then insert a memory (vector lands with the row; NULL if the
-   *  embed failed). The summary backfills asynchronously. */
-  async function insert(kind: Kind, content: string): Promise<{ id: number; vector: string | null }> {
-    const vector = await embed(config.embedding, content)
+   *  embed failed). Pass a pre-computed vector to skip the embed call. The
+   *  summary backfills asynchronously. */
+  async function insert(
+    kind: Kind,
+    content: string,
+    preVector?: string | null,
+  ): Promise<{ id: number; vector: string | null }> {
+    const vector = preVector !== undefined ? preVector : await embed(config.embedding, content)
     const [row] = await sql`
       INSERT INTO memories (session_id, kind, content, embedding)
       VALUES (${sessionId}, ${kind}, ${content}, ${vector}::vector)
@@ -228,10 +235,10 @@ export default async function (pi: ExtensionAPI) {
   }
 
   /** Similarity-search other sessions with an already-computed vector and
-   *  inject the hits as a <recollected> block. Four per-kind queries so no
-   *  one kind monopolizes the feed. */
-  async function surface(vector: string) {
-    if (!config.surfacing.enabled) return
+   *  build the <recollected> block, or null when nothing clears the
+   *  thresholds. Four per-kind queries so no one kind monopolizes the feed. */
+  async function surfaceBlock(vector: string): Promise<string | null> {
+    if (!config.surfacing.enabled) return null
     // TODO: cooldown set — skip memories surfaced recently in this session,
     // so thought-triggered surfacing can't re-surface what just surfaced.
     const perKind = await Promise.all(
@@ -253,13 +260,22 @@ export default async function (pi: ExtensionAPI) {
       ),
     )
     const rows = perKind.flat()
-    if (rows.length === 0) return
+    if (rows.length === 0) return null
     const lines = rows.map((r) => {
       const id = Number(r.id)
       if (r.summary) summaryById.set(id, r.summary)
       const date = r.created_at.toISOString().slice(0, 10)
       return `[memory ${id} · ${r.kind} · ${date}] ${r.summary ?? "(not yet summarized — recall to read)"}`
     })
+    return `<recollected>\n${lines.join("\n")}\n</recollected>`
+  }
+
+  /** Surface via message delivery (said/thought/steered-heard/recall
+   *  chaining). heard on a normal prompt surfaces pre-run instead, in the
+   *  before_agent_start handler below. */
+  async function surface(vector: string) {
+    const block = await surfaceBlock(vector)
+    if (!block) return
     // Mid-turn delivery MUST be followUp, never steer (the default): a
     // pending steer triggers omp's interrupt state, which preempts every
     // queued-but-unstarted tool as "Skipped due to pending system advisory".
@@ -268,20 +284,44 @@ export default async function (pi: ExtensionAPI) {
     // tools. followUp queues without interrupting and lands when the run
     // finishes. Idle: nextTurn appends to history without starting a turn.
     pi.sendMessage(
-      { customType: SURFACING_MESSAGE_TYPE, content: `<recollected>\n${lines.join("\n")}\n</recollected>`, display: true },
+      { customType: SURFACING_MESSAGE_TYPE, content: block, display: true },
       { deliverAs: agentRunning ? "followUp" : "nextTurn" },
     )
   }
 
-  function record(kind: Kind, content: string) {
+  function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
     if (!content.trim()) return
     void (async () => {
-      const { vector } = await insert(kind, content)
-      if (vector) await surface(vector)
+      const { vector } = await insert(kind, content, opts?.vector)
+      if (vector && (opts?.surfaceAfter ?? true)) await surface(vector)
     })().catch(() => {
       // Memory must never break the session; drop the row on DB failure.
     })
   }
+
+  // Pre-run surfacing for heard: embed the prompt before the agent loop
+  // starts (~300ms, the one place surfacing is allowed to block) and inject
+  // hits as context the model sees while responding. The vector and a
+  // surfaced flag carry over to the heard capture below so the prompt is
+  // neither re-embedded nor surfaced twice.
+  let pendingPrompt: { text: string; vector: string } | null = null
+  let promptSurfacedPreRun = false
+
+  pi.on("before_agent_start", async (event) => {
+    if (!config.surfacing.enabled || !event.prompt.trim()) return
+    try {
+      const vector = await embed(config.embedding, event.prompt)
+      if (!vector) return
+      pendingPrompt = { text: event.prompt, vector }
+      promptSurfacedPreRun = true
+      const block = await surfaceBlock(vector)
+      if (!block) return
+      return { message: { customType: SURFACING_MESSAGE_TYPE, content: block, display: true } }
+    } catch {
+      // Memory must never break the session; skip pre-run surfacing.
+      return
+    }
+  })
 
   pi.on("session_start", async () => {
     sessionId = crypto.randomUUID()
@@ -308,7 +348,18 @@ export default async function (pi: ExtensionAPI) {
   pi.on("message_end", async (event) => {
     const message = event.message as { role: string; content: unknown }
     if (message.role === "user") {
-      record("heard", textOf(message.content))
+      const text = textOf(message.content)
+      const cached = pendingPrompt
+      pendingPrompt = null
+      const preSurfaced = promptSurfacedPreRun
+      promptSurfacedPreRun = false
+      if (cached && cached.text === text) {
+        record("heard", text, { vector: cached.vector, surfaceAfter: false })
+      } else {
+        // Steered input, or the delivered text diverged from the submitted
+        // prompt — capture normally, but never surface the same run twice.
+        record("heard", text, { surfaceAfter: !preSurfaced })
+      }
     } else if (message.role === "assistant") {
       const blocks = Array.isArray(message.content) ? message.content : []
       for (const block of blocks) {
