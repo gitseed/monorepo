@@ -10,7 +10,7 @@ As you hear, say, and think, memories from past sessions that resemble the curre
 
 ```
 <recollected>
-[memory 41 · thought · 2026-08-04] One-phrase summary of the memory
+[memory 41 · thought · 2026-08-04 · 1569 chars] One-phrase summary of the memory
 </recollected>
 ```
 

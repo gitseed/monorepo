@@ -253,7 +253,7 @@ export default async function (pi: ExtensionAPI) {
       KINDS.map(
         (k) =>
           sql`
-        SELECT id, kind, created_at, summary
+        SELECT id, kind, created_at, content_len, summary
         FROM memories
         WHERE session_id <> ${sessionId}
           AND kind = ${k}
@@ -264,7 +264,7 @@ export default async function (pi: ExtensionAPI) {
           AND 1 - (embedding <=> ${vector}::vector) <= ${config.surfacing.maxSimilarity}
         ORDER BY embedding <=> ${vector}::vector
         LIMIT ${config.surfacing.perKindLimit}` as Promise<
-            Array<{ id: number | bigint; kind: Kind; created_at: Date; summary: string | null }>
+            Array<{ id: number | bigint; kind: Kind; created_at: Date; content_len: number; summary: string | null }>
           >,
       ),
     )
@@ -275,7 +275,7 @@ export default async function (pi: ExtensionAPI) {
       surfacedIds.add(id)
       if (r.summary) summaryById.set(id, r.summary)
       const date = r.created_at.toISOString().slice(0, 10)
-      return `[memory ${id} · ${r.kind} · ${date}] ${r.summary ?? "(not yet summarized — recall to read)"}`
+      return `[memory ${id} · ${r.kind} · ${date} · ${r.content_len} chars] ${r.summary ?? "(not yet summarized — recall to read)"}`
     })
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
