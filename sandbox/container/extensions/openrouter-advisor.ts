@@ -1,9 +1,9 @@
-// OpenRouter Advisor suite — each JSON file in `advisors/` defines one
+// OpenRouter Advisor suite — each JSON file in `openrouter-advisor/advisors/` defines one
 // tool the model can call mid-generation for guidance. Pull-based, zero
 // cost on trivial turns.
 //
 // Configuration:
-//   One JSON file per advisor tool in `advisors/` next to this extension.
+//   One JSON file per advisor tool in `openrouter-advisor/advisors/` next to this extension.
 //   Each file must set `name` (the tool name) and may override any default.
 //   Edit the JSON to change behavior without touching code.
 //   Environment variable:
@@ -53,10 +53,10 @@ const DEFAULTS: Omit<AdvisorConfig, "name"> = {
   reasoning: null,
 };
 
-/** Read every `advisors/*.json` next to this extension and merge each over the hardcoded defaults. */
+/** Read every `openrouter-advisor/advisors/*.json` next to this extension and merge each over the hardcoded defaults. */
 function loadConfigs(logger: ExtensionAPI["logger"] | undefined): AdvisorConfig[] {
   try {
-    const dir = new URL("advisors/", import.meta.url);
+    const dir = new URL("openrouter-advisor/advisors/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
     return files.map((f) => {
       const raw = readFileSync(new URL(f, dir), "utf-8");

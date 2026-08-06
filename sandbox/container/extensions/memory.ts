@@ -1,11 +1,6 @@
 // Memory extension — passive capture, recollect/recall/remember/suppress
 // tools, and unprompted surfacing.
 //
-// Configured by /root/.omp/agent/memory.json (override the path with
-// MEMORY_CONFIG); missing file or keys fall back to DEFAULTS below, with
-// enabled=false, so the extension is inert until the config turns it on.
-// OPENROUTER_API_KEY stays an env var — it's a secret, not config.
-//
 // One row per memory in the `memories` table (see sandbox/memory/init.sql):
 //   heard      — something the user said (captured automatically)
 //   said       — something the agent said (captured automatically)
@@ -35,155 +30,10 @@
 import { SQL } from "bun"
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"
 import { Text } from "@oh-my-pi/pi-tui"
+import { type MemoryConfig, loadConfig, type Kind, KINDS } from "./memory/config"
+import { summarize, embed } from "./memory/openrouter"
 
-const CONFIG_PATH = process.env.MEMORY_CONFIG || "/root/.omp/agent/memory.json"
-const OPENROUTER = "https://openrouter.ai/api/v1"
 const SURFACING_MESSAGE_TYPE = "memory-recollection"
-
-interface MemoryConfig {
-  enabled: boolean
-  postgres: {
-    socketPath: string
-    port: number
-    database: string
-    username: string
-    maxConnections: number
-  }
-  summary: {
-    model: string
-    maxInputChars: number
-    maxTokens: number
-    timeoutMs: number
-  }
-  embedding: {
-    // Baked into the schema: memories.embedding is vector(1536).
-    // Switching models means re-embedding the table.
-    model: string
-    maxInputChars: number
-    timeoutMs: number
-  }
-  recollect: {
-    defaultCount: number
-    maxCount: number
-  }
-  surfacing: {
-    enabled: boolean
-    minSimilarity: number
-    maxSimilarity: number
-    perKindLimit: number
-  }
-}
-
-const DEFAULTS: MemoryConfig = {
-  enabled: false,
-  postgres: {
-    socketPath: "/var/run/postgresql",
-    port: 5432,
-    database: "memory",
-    username: "omp",
-    maxConnections: 2,
-  },
-  summary: {
-    model: "deepseek/deepseek-v4-flash-0731",
-    maxInputChars: 8_000,
-    maxTokens: 40,
-    timeoutMs: 20_000,
-  },
-  embedding: {
-    model: "openai/text-embedding-3-small",
-    maxInputChars: 30_000,
-    timeoutMs: 20_000,
-  },
-  recollect: {
-    defaultCount: 3,
-    maxCount: 25,
-  },
-  surfacing: {
-    enabled: false,
-    // min gates relevance; max is the anti-déjà-vu filter — near-identical
-    // memories (the same exchange from a past session) don't resurface.
-    // Scale is model-specific: with text-embedding-3-small, echoes sit at
-    // ~1.0, strong associations at ~0.45-0.55, noise below ~0.3 (measured
-    // against a live corpus). A 0.55 floor left no band under the ceiling.
-    minSimilarity: 0.4,
-    maxSimilarity: 0.95,
-    perKindLimit: 2,
-  },
-}
-
-async function loadConfig(): Promise<MemoryConfig> {
-  try {
-    const raw = (await Bun.file(CONFIG_PATH).json()) as Partial<MemoryConfig>
-    return {
-      enabled: raw.enabled ?? DEFAULTS.enabled,
-      postgres: { ...DEFAULTS.postgres, ...raw.postgres },
-      summary: { ...DEFAULTS.summary, ...raw.summary },
-      embedding: { ...DEFAULTS.embedding, ...raw.embedding },
-      recollect: { ...DEFAULTS.recollect, ...raw.recollect },
-      surfacing: { ...DEFAULTS.surfacing, ...raw.surfacing },
-    }
-  } catch {
-    return DEFAULTS
-  }
-}
-
-type Kind = "heard" | "said" | "thought" | "remembered"
-const KINDS: Kind[] = ["heard", "said", "thought", "remembered"]
-
-/** One-phrase summary from the summary model, or null on any failure. No
- *  fabricated stand-ins: a NULL summary column is the loud, queryable
- *  signal that summarization failed or hasn't run. */
-async function summarize(cfg: MemoryConfig["summary"], content: string): Promise<string | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) return null
-  try {
-    const res = await fetch(`${OPENROUTER}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: cfg.model,
-        max_tokens: cfg.maxTokens,
-        // Reasoning burns the whole token budget before any content lands
-        // (finish_reason "length", content null).
-        reasoning: { enabled: false },
-        messages: [
-          {
-            role: "system",
-            content:
-              "Summarize the following conversation turn in one very short phrase, 12 words max. Output only the phrase.",
-          },
-          { role: "user", content: content.slice(0, cfg.maxInputChars) },
-        ],
-      }),
-      signal: AbortSignal.timeout(cfg.timeoutMs),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    return data.choices?.[0]?.message?.content?.trim() || null
-  } catch {
-    return null
-  }
-}
-
-/** Embed text and return it in pgvector's text format ('[0.1,0.2,...]'), or null on failure. */
-async function embed(cfg: MemoryConfig["embedding"], input: string): Promise<string | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) return null
-  try {
-    const res = await fetch(`${OPENROUTER}/embeddings`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: cfg.model, input: input.slice(0, cfg.maxInputChars) }),
-      signal: AbortSignal.timeout(cfg.timeoutMs),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> }
-    const vector = data.data?.[0]?.embedding
-    return Array.isArray(vector) ? `[${vector.join(",")}]` : null
-  } catch {
-    return null
-  }
-}
 
 /** Flatten a user/assistant content field to plain text (ignores images and tool calls). */
 function textOf(content: unknown): string {

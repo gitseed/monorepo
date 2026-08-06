@@ -7,7 +7,7 @@ symbolPreset: nerd
 hideThinkingBlock: true
 # Built-in memory tools (memory_recall/retain/reflect) stay off; turn
 # logging is handled by the postgres memory extension instead (also
-# disabled for now — see extensions/memory.ts).
+# disabled for now — see extensions/memory/).
 memory:
   backend: "off"
 setupVersion: 1
