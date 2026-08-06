@@ -55,18 +55,50 @@ export default async function (pi: ExtensionAPI) {
   const config = await loadConfig()
   if (!config.enabled) return
 
-  const sql = new SQL({
-    path: config.postgres.socketPath,
-    port: config.postgres.port,
-    database: config.postgres.database,
-    username: config.postgres.username,
-    max: config.postgres.maxConnections,
-    // Seconds. A dead socket (postgres restarted under a live session) must
-    // fail a query, not hang it: surfaceBlock runs serialized, so one
-    // never-resolving query would starve every later surfacing — and the
-    // awaited before_agent_start handler would blow omp's 30s budget.
-    connectionTimeout: 10,
-  })
+  function makePool(): SQL {
+    return new SQL({
+      path: config.postgres.socketPath,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      max: config.postgres.maxConnections,
+      // Seconds; connect-phase guard only. Query-phase hangs are handled
+      // by db() below.
+      connectionTimeout: 10,
+    })
+  }
+
+  // Bun.SQL's pool can wedge permanently client-side: a server error can
+  // strand a connection (oven-sh/bun#22395), server-side closes corrupt
+  // the pool (#30947), idle-closed connections never redial (#17178).
+  // Observed live: both connections idle in pg_stat_activity while every
+  // new query queued forever. So every query runs under a deadline; on
+  // deadline the pool is discarded and rebuilt, and the query fails loudly
+  // instead of freezing whatever awaited it.
+  const QUERY_DEADLINE_MS = 10_000
+  let sql = makePool()
+
+  async function db<T>(run: (s: SQL) => Promise<T>): Promise<T> {
+    const pool = sql
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("memory database unresponsive (query deadline exceeded); pool rebuilt — retry")),
+        QUERY_DEADLINE_MS,
+      )
+    })
+    try {
+      return await Promise.race([run(pool), deadline])
+    } catch (error) {
+      if (pool === sql && error instanceof Error && error.message.startsWith("memory database unresponsive")) {
+        void pool.close().catch(() => {})
+        sql = makePool()
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   let sessionId = crypto.randomUUID()
 
@@ -84,14 +116,16 @@ export default async function (pi: ExtensionAPI) {
     preVector?: string | null,
   ): Promise<{ id: number; vector: string | null }> {
     const vector = preVector !== undefined ? preVector : await embed(config.embedding, content)
-    const [row] = await sql`
+    const [row] = await db(
+      (s) => s`
       INSERT INTO memories (session_id, kind, content, embedding)
       VALUES (${sessionId}, ${kind}, ${content}, ${vector}::vector)
-      RETURNING id`
+      RETURNING id`,
+    )
     const id = Number(row.id)
     void (async () => {
       const summary = await summarize(config.summary, content)
-      if (summary) await sql`UPDATE memories SET summary = ${summary} WHERE id = ${id}`
+      if (summary) await db((s) => s`UPDATE memories SET summary = ${summary} WHERE id = ${id}`)
     })().catch(() => {})
     return { id, vector }
   }
@@ -123,10 +157,11 @@ export default async function (pi: ExtensionAPI) {
   async function surfaceBlockNow(vector: string): Promise<string | null> {
     if (!config.surfacing.enabled) return null
     const cooled = `{${[...surfacedIds].join(",")}}`
-    const perKind = await Promise.all(
-      KINDS.map(
-        (k) =>
-          sql`
+    const perKind = await db((s) =>
+      Promise.all(
+        KINDS.map(
+          (k) =>
+            s`
         SELECT id, kind, created_at, content_len, summary
         FROM memories
         WHERE session_id <> ${sessionId}
@@ -138,8 +173,9 @@ export default async function (pi: ExtensionAPI) {
           AND 1 - (embedding <=> ${vector}::vector) <= ${config.surfacing.maxSimilarity}
         ORDER BY embedding <=> ${vector}::vector
         LIMIT ${config.surfacing.perKindLimit}` as Promise<
-            Array<{ id: number | bigint; kind: Kind; created_at: Date; content_len: number; summary: string | null }>
-          >,
+              Array<{ id: number | bigint; kind: Kind; created_at: Date; content_len: number; summary: string | null }>
+            >,
+        ),
       ),
     )
     const rows = perKind.flat()
@@ -439,7 +475,8 @@ export default async function (pi: ExtensionAPI) {
       const vector = await embed(config.embedding, p.search_string)
       if (!vector) throw new Error("embedding service unavailable; cannot search memories right now")
       const kind = p.type && p.type !== "any" ? p.type : null
-      const rows = (await sql`
+      const rows = (await db(
+        (s) => s`
         SELECT id, kind, created_at, content_len, summary
         FROM memories
         WHERE session_id <> ${sessionId}
@@ -455,7 +492,8 @@ export default async function (pi: ExtensionAPI) {
           AND (${p.max_similarity ?? null}::float8 IS NULL
                OR 1 - (embedding <=> ${vector}::vector) <= ${p.max_similarity ?? null})
         ORDER BY embedding <=> ${vector}::vector
-        LIMIT ${Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)}`) as Array<{
+        LIMIT ${Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)}`,
+      )) as Array<{
         id: number | bigint
         kind: Kind
         created_at: Date
@@ -484,8 +522,10 @@ export default async function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       const { id } = params as { id: number }
-      const [row] = (await sql`
-        SELECT content, summary, embedding::text AS embedding FROM memories WHERE id = ${id}`) as Array<{
+      const [row] = (await db(
+        (s) => s`
+        SELECT content, summary, embedding::text AS embedding FROM memories WHERE id = ${id}`,
+      )) as Array<{
         content: string
         summary: string | null
         embedding: string | null
@@ -550,8 +590,10 @@ export default async function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       const { id } = params as { id: number }
-      const [row] = (await sql`
-        UPDATE memories SET suppressed = NOT suppressed WHERE id = ${id} RETURNING id, summary, suppressed`) as Array<{
+      const [row] = (await db(
+        (s) => s`
+        UPDATE memories SET suppressed = NOT suppressed WHERE id = ${id} RETURNING id, summary, suppressed`,
+      )) as Array<{
         id: number | bigint
         summary: string | null
         suppressed: boolean
