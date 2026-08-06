@@ -93,11 +93,26 @@ export default async function (pi: ExtensionAPI) {
   // event (observed live: identical ids recurring in every block).
   let surfacedIds = new Set<number>()
 
+  // Surfacing runs strictly serialized. A reply and its thinking blocks
+  // capture together, so their surfacing queries otherwise run
+  // concurrently — both read the cooldown set before either writes it,
+  // and the same memory lands in adjacent blocks (observed live).
+  let surfaceTail: Promise<unknown> = Promise.resolve()
+  function serializeSurfacing<T>(task: () => Promise<T>): Promise<T> {
+    const next = surfaceTail.then(task, task)
+    surfaceTail = next.catch(() => {})
+    return next
+  }
+
   /** Similarity-search other sessions with an already-computed vector and
    *  build the <recollected> block, or null when nothing clears the
    *  thresholds. Four per-kind queries so no one kind monopolizes the
    *  feed. Hits enter the cooldown set. */
-  async function surfaceBlock(vector: string): Promise<string | null> {
+  function surfaceBlock(vector: string): Promise<string | null> {
+    return serializeSurfacing(() => surfaceBlockNow(vector))
+  }
+
+  async function surfaceBlockNow(vector: string): Promise<string | null> {
     if (!config.surfacing.enabled) return null
     const cooled = `{${[...surfacedIds].join(",")}}`
     const perKind = await Promise.all(
