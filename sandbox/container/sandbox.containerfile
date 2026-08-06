@@ -90,7 +90,7 @@ ENV EDITOR=emacs-nox
 
 COPY agent-config.yml /root/.omp/agent/config.yml
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
-COPY extensions/morph/morph.ts /root/.omp/agent/extensions/morph.ts
+COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
 # OpenRouter Advisor tools — each JSON in openrouter-advisor/advisors/ defines one advisor tool.
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
@@ -108,7 +108,7 @@ COPY extensions/memory/APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
 
 # TEMPORARY: shadow the built-in read tool to drop the memory:// schema
 # mention (oh-my-pi #7673); delete once upstream PR #7675 ships.
-COPY extensions/read-patch/read-patch.ts /root/.omp/agent/extensions/read-patch.ts
+COPY extensions/read-patch.ts /root/.omp/agent/extensions/read-patch.ts
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).

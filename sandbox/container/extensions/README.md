@@ -19,16 +19,16 @@ extensions/
 │   ├── openrouter.ts            # summarize + embed API calls
 │   ├── memory.json              # runtime config (models, limits, postgres)
 │   └── APPEND_SYSTEM.md         # model-facing system prompt contract
-├── morph/
-│   └── morph.ts                 # edit tool via Morph Fast Apply
+├── morph.ts                     # entry: edit tool via Morph Fast Apply
+├── morph/                       # docs
 ├── openrouter-advisor.ts        # entry: loads advisor JSONs, registers tools
 ├── openrouter-advisor/
 │   └── advisors/                # one JSON per advisor tool
 │       ├── openrouter-advisor.json
 │       └── consult-fable.json
-├── read-patch/
-│   └── read-patch.ts             # temporary read shadow
-├── package.json                  # shared typecheck infra
+├── read-patch.ts                # entry: temporary read shadow
+├── read-patch/                  # docs
+├── package.json                 # shared typecheck infra
 └── tsconfig.json
 ```
 

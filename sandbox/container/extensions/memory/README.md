@@ -13,7 +13,7 @@ A persistent, cross-session memory system for the sandboxed OMP agent. Captures 
 
 | File | Purpose |
 |------|---------|
-| `memory.ts` | Entry point — tools, capture, surfacing, TUI renderers |
+| `../memory.ts` | Entry point (top level, where omp's scanner finds it) — tools, capture, surfacing, TUI renderers |
 | `config.ts` | Config types, defaults, JSON loader |
 | `openrouter.ts` | `summarize()` and `embed()` API calls |
 | `memory.json` | Runtime config (models, limits, postgres connection, surfacing thresholds) |

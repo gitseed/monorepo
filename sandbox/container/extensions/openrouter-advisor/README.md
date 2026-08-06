@@ -13,7 +13,7 @@ A suite of mid-generation advisor tools — each JSON file in `advisors/` define
 | File | Tool name | Model | Purpose |
 |------|-----------|-------|---------|
 | `advisors/openrouter-advisor.json` | `openrouter_advisor` | `qwen/qwen3.8-max` | Strategic guidance before committing to an approach |
-| `advisors/consult-fable.json` | `consult_fable` | `anthropic/claude-fable-latest` | Wisdom in dire situations only |
+| `advisors/consult-fable.json` | `consult_fable` | `~anthropic/claude-fable-latest` | Wisdom in dire situations only |
 
 ## Config
 
