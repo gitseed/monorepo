@@ -311,7 +311,7 @@ export default async function (pi: ExtensionAPI) {
   // role "custom" and land outside both branches: surfaced memories must
   // never become memories.
   pi.on("message_end", async (event) => {
-    const message = event.message as { role: string; content: unknown }
+    const message = event.message as { role: string; content: unknown; stopReason?: string }
     if (message.role === "user") {
       const text = textOf(message.content)
       const cached = pendingPrompt
@@ -327,9 +327,14 @@ export default async function (pi: ExtensionAPI) {
       }
     } else if (message.role === "assistant") {
       const blocks = Array.isArray(message.content) ? message.content : []
-      // Tool calls in this message mean the run continues past the next
-      // boundary — the window where aside delivery is safe.
-      runContinuing = blocks.some((b) => b?.type === "toolCall")
+      // The run continues past the next boundary only when this message
+      // carries tool calls AND stopped runnably — mirrors the loop's own
+      // hasMoreToolCalls (runnableStop && toolCalls.length > 0). Tool
+      // calls with stopReason error/length still hit the stop boundary,
+      // where an aside would spawn a one-shot continuation.
+      runContinuing =
+        blocks.some((b) => b?.type === "toolCall") &&
+        (message.stopReason === "toolUse" || message.stopReason === "stop")
       for (const block of blocks) {
         if (block?.type === "thinking" && typeof block.thinking === "string") {
           record("thought", block.thinking)
