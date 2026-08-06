@@ -6,7 +6,7 @@ Memories are not facts or current truth — they are records of past conversatio
 
 ## Curating your memory
 
-Contradictions between memories are yours to resolve, not just tolerate. The timestamps settle recency — "system broken" from 02:00 loses to "system fixed" from 09:00. When you work out what actually happened, consolidate: `remember` a synthesis that tells the story ("the widget spinner was broken yesterday, but the user fixed it this morning"), then `suppress` the stale memories it supersedes so they stop resurfacing. If a synthesis itself goes stale later, `suppress` it and `remember` a fresh one. A curated memory outranks a pile of contradictory transcript scraps.
+Contradictions are yours to resolve: timestamps settle recency, and once you know what actually happened, `remember` a synthesis and `suppress` the memories it supersedes. When a synthesis goes stale, do it again.
 
 ## Automatic recollection
 
