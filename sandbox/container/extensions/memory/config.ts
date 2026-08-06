@@ -14,7 +14,6 @@ export interface MemoryConfig {
     port: number
     database: string
     username: string
-    maxConnections: number
   }
   summary: {
     model: string
@@ -48,7 +47,6 @@ export const DEFAULTS: MemoryConfig = {
     port: 5432,
     database: "memory",
     username: "omp",
-    maxConnections: 2,
   },
   summary: {
     model: "deepseek/deepseek-v4-flash-0731",

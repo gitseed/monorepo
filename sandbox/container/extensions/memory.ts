@@ -61,20 +61,24 @@ export default async function (pi: ExtensionAPI) {
       port: config.postgres.port,
       database: config.postgres.database,
       username: config.postgres.username,
-      max: config.postgres.maxConnections,
+      // One connection — this is a single-process extension talking to a
+      // local postgres over a unix socket, not a service. A pool here is
+      // over-engineering: surfacing runs serialized anyway, so the second
+      // connection only ever raced the summary backfill.
+      max: 1,
       // Seconds; connect-phase guard only. Query-phase hangs are handled
       // by db() below.
       connectionTimeout: 10,
     })
   }
 
-  // Bun.SQL's pool can wedge permanently client-side: a server error can
-  // strand a connection (oven-sh/bun#22395), server-side closes corrupt
-  // the pool (#30947), idle-closed connections never redial (#17178).
-  // Observed live: both connections idle in pg_stat_activity while every
+  // A single connection can wedge permanently client-side: a server error
+  // can strand it (oven-sh/bun#22395), server-side closes corrupt the
+  // client (#30947), idle-closed connections never redial (#17178).
+  // Observed live: the connection idle in pg_stat_activity while every
   // new query queued forever. So every query runs under a deadline; on
-  // deadline the pool is discarded and rebuilt, and the query fails loudly
-  // instead of freezing whatever awaited it.
+  // deadline the connection is discarded and rebuilt, and the query fails
+  // loudly instead of freezing whatever awaited it.
   const QUERY_DEADLINE_MS = 10_000
   let sql = makePool()
 
@@ -83,7 +87,7 @@ export default async function (pi: ExtensionAPI) {
     let timer: ReturnType<typeof setTimeout> | undefined
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(
-        () => reject(new Error("memory database unresponsive (query deadline exceeded); pool rebuilt — retry")),
+        () => reject(new Error("memory database unresponsive (query deadline exceeded); connection rebuilt — retry")),
         QUERY_DEADLINE_MS,
       )
     })

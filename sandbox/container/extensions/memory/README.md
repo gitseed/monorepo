@@ -24,7 +24,7 @@ A persistent, cross-session memory system for the sandboxed OMP agent. Captures 
 `memory.json` (deployed to `/root/.omp/agent/memory.json`; override path with `MEMORY_CONFIG` env var):
 
 - `enabled`: `false` by default — the extension is inert until turned on.
-- `postgres`: socket path, port, database, username, max connections.
+- `postgres`: socket path, port, database, username.
 - `summary`: model, input char cap, max output tokens, timeout.
 - `embedding`: model, input char cap, timeout. The embedding dimension (1536) is baked into the schema (`vector(1536)`) — switching models means re-embedding the table.
 - `recollect`: default and max result counts.
