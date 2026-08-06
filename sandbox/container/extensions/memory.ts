@@ -274,8 +274,10 @@ export default async function (pi: ExtensionAPI) {
       const id = Number(r.id)
       surfacedIds.add(id)
       if (r.summary) summaryById.set(id, r.summary)
-      const date = r.created_at.toISOString().slice(0, 10)
-      return `[memory ${id} · ${r.kind} · ${date} · ${r.content_len} chars] ${r.summary ?? "(not yet summarized — recall to read)"}`
+      // Minute precision: same-day memories from an hour ago and a week of
+      // sessions must not read as equally fresh.
+      const when = `${r.created_at.toISOString().slice(0, 16)}Z`
+      return `[memory ${id} · ${r.kind} · ${when} · ${r.content_len} chars] ${r.summary ?? "(not yet summarized — recall to read)"}`
     })
     return `<recollected>\n${lines.join("\n")}\n</recollected>`
   }
