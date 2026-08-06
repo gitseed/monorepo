@@ -235,7 +235,7 @@ export default async function (pi: ExtensionAPI) {
     label: "Recollect",
     description:
       "Surface a small number of memories from previous sessions that are semantically similar to a search string. " +
-      "Returns JSON [{id, date, full_text_length, summary}] ordered most-similar first. " +
+      "Returns JSON [{id, kind, date, full_text_length, summary}] ordered most-similar first. " +
       "Use recall with an id to read a memory's full text.",
     approval: "read",
     parameters: z.object({
@@ -284,7 +284,7 @@ export default async function (pi: ExtensionAPI) {
       if (!vector) throw new Error("embedding service unavailable; cannot search memories right now")
       const kind = p.type && p.type !== "any" ? p.type : null
       const rows = (await sql`
-        SELECT id, created_at, content_len, summary
+        SELECT id, kind, created_at, content_len, summary
         FROM memories
         WHERE session_id <> ${sessionId}
           AND embedding IS NOT NULL
@@ -301,12 +301,14 @@ export default async function (pi: ExtensionAPI) {
         ORDER BY embedding <=> ${vector}::vector
         LIMIT ${Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)}`) as Array<{
         id: number | bigint
+        kind: Kind
         created_at: Date
         content_len: number
         summary: string | null
       }>
       const memories = rows.map((r) => ({
         id: Number(r.id),
+        kind: r.kind,
         date: r.created_at.toISOString(),
         full_text_length: r.content_len,
         summary: r.summary,
