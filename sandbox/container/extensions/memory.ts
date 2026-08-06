@@ -536,29 +536,29 @@ export default async function (pi: ExtensionAPI) {
     name: "suppress",
     label: "Suppress",
     description:
-      "Suppress a memory that is unhelpful, unimportant or uncomfortable — or restore one with suppressed: false. " +
-      "Suppressed memories are hidden from recollect and automatic surfacing unless include_suppressed is set.",
+      "Toggle suppression of a memory that is unhelpful, unimportant or uncomfortable; calling it on a " +
+      "suppressed memory restores it. Suppressed memories are hidden from recollect and automatic " +
+      "surfacing unless include_suppressed is set.",
     approval: "write",
     parameters: z.object({
       id: z.number().int().describe("Memory id"),
-      suppressed: z.boolean().optional().describe("Target state; false restores a suppressed memory (default true)"),
     }),
     async execute(_id, params) {
-      const { id, suppressed = true } = params as { id: number; suppressed?: boolean }
+      const { id } = params as { id: number }
       const [row] = (await sql`
-        UPDATE memories SET suppressed = ${suppressed} WHERE id = ${id} RETURNING id, summary`) as Array<{
+        UPDATE memories SET suppressed = NOT suppressed WHERE id = ${id} RETURNING id, summary, suppressed`) as Array<{
         id: number | bigint
         summary: string | null
+        suppressed: boolean
       }>
       if (!row) throw new Error(`no memory with id ${id}`)
       if (row.summary) summaryById.set(id, row.summary)
-      return textResult(`${suppressed ? "suppressed" : "unsuppressed"} memory ${id}`)
+      return textResult(`${row.suppressed ? "suppressed" : "unsuppressed"} memory ${id}`)
     },
     renderCall(args, _options, theme) {
-      const { id, suppressed } = args as { id: number; suppressed?: boolean }
-      const verb = suppressed === false ? "unsuppress" : "suppress"
+      const { id } = args as { id: number }
       const summary = summaryById.get(id)
-      return new Text(theme.fg("muted", summary ? `${verb}(${summary})` : `${verb}(#${id})`), 0, 0)
+      return new Text(theme.fg("muted", summary ? `suppress(${summary})` : `suppress(#${id})`), 0, 0)
     },
   })
 }
