@@ -102,7 +102,10 @@ const DEFAULTS: MemoryConfig = {
     enabled: false,
     // min gates relevance; max is the anti-déjà-vu filter — near-identical
     // memories (the same exchange from a past session) don't resurface.
-    minSimilarity: 0.55,
+    // Scale is model-specific: with text-embedding-3-small, echoes sit at
+    // ~1.0, strong associations at ~0.45-0.55, noise below ~0.3 (measured
+    // against a live corpus). A 0.55 floor left no band under the ceiling.
+    minSimilarity: 0.4,
     maxSimilarity: 0.95,
     perKindLimit: 2,
   },
