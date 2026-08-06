@@ -260,12 +260,16 @@ export default async function (pi: ExtensionAPI) {
       const date = r.created_at.toISOString().slice(0, 10)
       return `[memory ${id} · ${r.kind} · ${date}] ${r.summary ?? "(not yet summarized — recall to read)"}`
     })
-    // Mid-turn: default delivery steers at the next agent boundary. Idle:
-    // nextTurn without triggerTurn appends to history and never starts a
-    // turn on its own.
+    // Mid-turn delivery MUST be followUp, never steer (the default): a
+    // pending steer triggers omp's interrupt state, which preempts every
+    // queued-but-unstarted tool as "Skipped due to pending system advisory".
+    // Since thinking itself triggers surfacing, steering here turns every
+    // hit into a self-inflicted interrupt storm that blocks the agent's own
+    // tools. followUp queues without interrupting and lands when the run
+    // finishes. Idle: nextTurn appends to history without starting a turn.
     pi.sendMessage(
       { customType: SURFACING_MESSAGE_TYPE, content: `<recollected>\n${lines.join("\n")}\n</recollected>`, display: true },
-      agentRunning ? undefined : { deliverAs: "nextTurn" },
+      { deliverAs: agentRunning ? "followUp" : "nextTurn" },
     )
   }
 

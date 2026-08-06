@@ -23,7 +23,7 @@
     "maxCount": 25
   },
   "surfacing": {
-    "enabled": false,
+    "enabled": true,
     "minSimilarity": 0.55,
     "maxSimilarity": 0.95,
     "perKindLimit": 2
