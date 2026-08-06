@@ -176,11 +176,32 @@ export default async function (pi: ExtensionAPI) {
 
   const MEMORY_TOOLS = new Set(["recollect", "recall", "remember", "suppress"])
 
+  // Surfacing tasks still in flight. Capture at message N races the tools
+  // of message N: embed + queries take ~300-600ms while a read or glob
+  // returns in milliseconds, so checking pendingBlocks alone loses every
+  // race in sparse-tool runs and everything batches at agent_end
+  // (observed live). tool_result waits briefly for in-flight tasks
+  // instead of only harvesting what already landed.
+  const inflightSurfacing = new Set<Promise<unknown>>()
+  const DELIVERY_WAIT_MS = 1_500
+
+  function trackSurfacing(task: Promise<unknown>) {
+    inflightSurfacing.add(task)
+    void task.finally(() => inflightSurfacing.delete(task)).catch(() => {})
+  }
+
   // Piggyback pending mid-run blocks on the next real tool result. Skipped
   // for memory-tool results (their formats would blur together) and for
   // errors (a failure should read as a failure).
   pi.on("tool_result", async (event) => {
-    if (pendingBlocks.length === 0 || event.isError || MEMORY_TOOLS.has(event.toolName)) return
+    if (event.isError || MEMORY_TOOLS.has(event.toolName)) return
+    if (pendingBlocks.length === 0 && inflightSurfacing.size > 0) {
+      await Promise.race([
+        Promise.allSettled([...inflightSurfacing]),
+        new Promise((resolve) => setTimeout(resolve, DELIVERY_WAIT_MS)),
+      ])
+    }
+    if (pendingBlocks.length === 0) return
     const text = pendingBlocks.join("\n")
     pendingBlocks = []
     return { content: [...event.content, { type: "text" as const, text }] }
@@ -202,12 +223,13 @@ export default async function (pi: ExtensionAPI) {
 
   function record(kind: Kind, content: string, opts?: { vector?: string | null; surfaceAfter?: boolean }) {
     if (!content.trim()) return
-    void (async () => {
+    const task = (async () => {
       const { vector } = await insert(kind, content, opts?.vector)
       if (vector && (opts?.surfaceAfter ?? true)) await surface(vector)
     })().catch(() => {
       // Memory must never break the session; drop the row on DB failure.
     })
+    if (opts?.surfaceAfter ?? true) trackSurfacing(task)
   }
 
   // Pre-run surfacing for heard: embed the prompt before the agent loop
