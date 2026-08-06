@@ -98,8 +98,10 @@ COPY extensions/openrouter-advisor/advisors/ /root/.omp/agent/extensions/openrou
 
 # Memory extension — captures memories to the shared postgres over its unix
 # socket via Bun's native SQL bindings. Configured (incl. enabled/disabled)
-# by memory.json.
+# by memory.json. The entry point imports ./memory/{config,openrouter};
+# the subfolder is inert to omp's extension scanner (no index.ts).
 COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
+COPY extensions/memory/config.ts extensions/memory/openrouter.ts /root/.omp/agent/extensions/memory/
 COPY extensions/memory/memory.json /root/.omp/agent/memory.json
 # System-prompt contract for the memory system and automatic surfacing.
 COPY extensions/memory/APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
