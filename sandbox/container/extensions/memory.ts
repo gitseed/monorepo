@@ -61,6 +61,11 @@ export default async function (pi: ExtensionAPI) {
     database: config.postgres.database,
     username: config.postgres.username,
     max: config.postgres.maxConnections,
+    // Seconds. A dead socket (postgres restarted under a live session) must
+    // fail a query, not hang it: surfaceBlock runs serialized, so one
+    // never-resolving query would starve every later surfacing — and the
+    // awaited before_agent_start handler would blow omp's 30s budget.
+    connectionTimeout: 10,
   })
 
   let sessionId = crypto.randomUUID()
@@ -268,19 +273,44 @@ export default async function (pi: ExtensionAPI) {
   // hits as context the model sees while responding. The vector and a
   // surfaced flag carry over to the heard capture below so the prompt is
   // neither re-embedded nor surfaced twice.
+  //
+  // Hard-bounded: worst case is a 20s embed timeout PLUS queueing behind
+  // the serialized surfacing chain, which overflows omp's 30s handler
+  // budget and logs an extension error (observed live). Past the budget
+  // the turn starts without a pre-run block and the heard capture
+  // surfaces through the normal mid-run path instead.
+  const PRE_RUN_BUDGET_MS = 8_000
   let pendingPrompt: { text: string; vector: string } | null = null
   let promptSurfacedPreRun = false
 
   pi.on("before_agent_start", async (event) => {
     if (!config.surfacing.enabled || !event.prompt.trim()) return
-    try {
+    const start = Date.now()
+    const preRun = (async () => {
       const vector = await embed(config.embedding, event.prompt)
-      if (!vector) return
+      if (!vector) return undefined
       pendingPrompt = { text: event.prompt, vector }
-      promptSurfacedPreRun = true
       const block = await surfaceBlock(vector)
-      if (!block) return
+      // Set only once the queries completed: on a timeout or failure the
+      // flag stays false and the heard capture surfaces normally, so the
+      // memories aren't lost — they just miss the pre-run slot.
+      promptSurfacedPreRun = true
+      if (!block) return undefined
+      if (Date.now() - start > PRE_RUN_BUDGET_MS) {
+        // The race already returned: these hits are in the cooldown set,
+        // so losing the block here would lose the memories. Reroute to
+        // the mid-run/agent_end delivery path.
+        leftoverBlocks.push(block)
+        return undefined
+      }
       return { message: { customType: SURFACING_MESSAGE_TYPE, content: block, display: true } }
+    })()
+    void preRun.catch(() => {})
+    try {
+      return await Promise.race([
+        preRun,
+        new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), PRE_RUN_BUDGET_MS)),
+      ])
     } catch {
       // Memory must never break the session; skip pre-run surfacing.
       return
