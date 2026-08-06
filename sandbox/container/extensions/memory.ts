@@ -291,6 +291,11 @@ export default async function (pi: ExtensionAPI) {
     sessionId = crypto.randomUUID()
     surfacedIds = new Set()
     leftoverBlocks = []
+    // /new builds a fresh AgentSession with a fresh yieldQueue; a cached
+    // asideEnqueue would feed the dead queue forever (found in review by
+    // the sandboxed agent). Reinstall on the next agent_start.
+    asideEnqueue = null
+    asideInstallTried = false
   })
 
   // Post-compaction memories belong to a fresh session — which also makes
