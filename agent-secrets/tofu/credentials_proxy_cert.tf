@@ -22,11 +22,15 @@ resource "tls_private_key" "credentials_proxy_server" {
   rsa_bits  = 2048
 }
 
+locals {
+  upstreams = yamldecode(file("../../sandbox/container/upstreams.yml"))
+}
+
 resource "tls_cert_request" "credentials_proxy_server" {
   private_key_pem = tls_private_key.credentials_proxy_server.private_key_pem
-  dns_names       = ["openrouter.ai", "api.github.com", "github.com", "api.firecrawl.dev", "mcp.context7.com"]
+  dns_names       = [for u in local.upstreams : u.host]
   subject {
-    common_name = "openrouter.ai"
+    common_name = local.upstreams[0].host
   }
 }
 

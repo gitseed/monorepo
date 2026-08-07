@@ -1,42 +1,12 @@
-/// Rendered to compose.yml by scripts/up.bash. The proxied upstreams mirror
-/// container/envoy.pkl — keep them in sync when adding or removing a service.
+/// Rendered to compose config by scripts/up.bash via process substitution.
+/// The proxied upstreams are shared from container/upstreams.yml — the single
+/// source of truth also read by container/envoy.pkl and the tofu cert.
 module compose
 
-local class Upstream {
-  host: String
-  name: String
-  env: String
-}
+import "pkl:yaml"
 
-local upstreams: Listing<Upstream> = new {
-  new {
-    host = "openrouter.ai"
-    name = "openrouter"
-    env = "OPENROUTER_API_KEY"
-  }
-  new {
-    host = "api.github.com"
-    name = "github"
-    env = "GITHUB_TOKEN"
-  }
-  new {
-    // git's smart-HTTP endpoints reject Bearer; they want Basic x-access-token.
-    // Tofu derives GITHUB_TOKEN_BASIC from the PAT at provisioning time.
-    host = "github.com"
-    name = "github_git"
-    env = "GITHUB_TOKEN_BASIC"
-  }
-  new {
-    host = "api.firecrawl.dev"
-    name = "firecrawl"
-    env = "FIRECRAWL_API_KEY"
-  }
-  new {
-    host = "mcp.context7.com"
-    name = "context7"
-    env = "CONTEXT7_API_KEY"
-  }
-}
+local rawUpstreams =
+  ((new yaml.Parser {}).parse(read("container/upstreams.yml").text) as Listing<Dynamic>).toList()
 
 services {
   proxy {
@@ -45,7 +15,7 @@ services {
       context = "./container"
       dockerfile = "proxy.containerfile"
     }
-    environment = upstreams.toList().map((u) -> u.env)
+    environment = rawUpstreams.map((u) -> u.env as String)
       + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY")
     healthcheck {
       // The envoy image has no curl.
@@ -70,7 +40,7 @@ services {
     secrets {
       "git_signing_key"
     }
-    links = upstreams.toList().map((u) -> "proxy:" + u.host)
+    links = rawUpstreams.map((u) -> "proxy:" + (u.host as String))
     volumes {
       "${GIT_PROJECT_DIR:-..}:/workspace"
       // Postgres unix socket from memory.compose.yml — the only path between

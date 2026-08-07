@@ -8,6 +8,7 @@ ADD --checksum=sha256:${PKL_SHA256} --chmod=0755 \
     https://github.com/apple/pkl/releases/download/${PKL_VERSION}/pkl-linux-aarch64 \
     /usr/local/bin/pkl
 COPY envoy.pkl /envoy.pkl
+COPY upstreams.yml /upstreams.yml
 RUN /usr/local/bin/pkl eval --format yaml /envoy.pkl --output-path /envoy.yaml
 
 FROM docker.io/envoyproxy/envoy:v1.39-latest
