@@ -23,7 +23,7 @@ resource "tls_private_key" "credentials_proxy_server" {
 }
 
 locals {
-  upstreams = yamldecode(file("../../sandbox/container/upstreams.yml"))
+  upstreams = yamldecode(file("${path.module}/../../sandbox/container/upstreams.yml"))
 }
 
 resource "tls_cert_request" "credentials_proxy_server" {
