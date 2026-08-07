@@ -44,19 +44,21 @@ main() {
     }
     trap cleanup EXIT
 
-    # Daily rebuild to update harness version.
-    today=$(date +%Y-%m-%d)
-    built_today() {
-        [[ $(docker image inspect "$1" 2>/dev/null | jq -r '(.[0].Created // empty)[0:10]') == "$today" ]]
+    # Rebuild at least every 12 hours to update harness version.
+    cutoff=$(date -d '12 hours ago' -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -v-12H -u +%Y-%m-%dT%H:%M:%S)
+    built_recently() {
+        local created
+        created=$(docker image inspect "$1" 2>/dev/null | jq -r '(.[0].Created // empty)[0:19]') || return 1
+        [[ -n "$created" && "$created" > "$cutoff" ]]
     }
 
-    if built_today credentials-proxy; then
+    if built_recently credentials-proxy; then
         "${COMPOSE[@]}" -p "$PROJECT" build proxy
     else
         "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
     fi
 
-    if built_today sandbox; then
+    if built_recently sandbox; then
         infisical run -- "${COMPOSE[@]}" -p "$PROJECT" build sandbox
     else
         infisical run -- \
