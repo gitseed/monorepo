@@ -612,7 +612,7 @@ export default async function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       const { text: content } = params as { text: string }
-      if (!content.trim()) throw new Error("cannot remember empty text")
+      if (!content || !content.trim()) throw new Error("cannot remember empty text")
       const { id } = await insert("remembered", content)
       return textResult(JSON.stringify({ id }))
     },
