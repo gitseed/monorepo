@@ -34,4 +34,4 @@ A persistent, cross-session memory system for the sandboxed OMP agent. Captures 
 
 ## Schema
 
-See `sandbox/memory/init.sql` — one row per memory in the `memories` table. The `embedding` column is `vector(1536)`; the `summary` column backfills asynchronously (NULL until done — failures stay visible, nothing is fabricated).
+See `extensions/memory/init.sql` — one row per memory in the `memories` table. The `embedding` column is `vector(1536)`; the `summary` column backfills asynchronously (NULL until done — failures stay visible, nothing is fabricated).

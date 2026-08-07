@@ -1,7 +1,7 @@
 // Memory extension — passive capture, recollect/recall/remember/suppress
 // tools, and unprompted surfacing.
 //
-// One row per memory in the `memories` table (see sandbox/memory/init.sql):
+// One row per memory in the `memories` table (see extensions/memory/init.sql):
 //   heard      — something the user said (captured automatically)
 //   said       — something the agent said (captured automatically)
 //   thought    — an agent thinking block (captured automatically)
