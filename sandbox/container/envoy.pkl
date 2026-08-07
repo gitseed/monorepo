@@ -1,6 +1,9 @@
-/// Rendered to envoy.yaml during the image build. To proxy another
-/// upstream, add an entry to `upstreams`.
+/// Rendered to envoy.yaml during the image build. The proxied upstreams
+/// are shared from upstreams.yml — the single source of truth also read by
+/// sandbox/compose.pkl and the tofu cert.
 module envoy
+
+import "pkl:yaml"
 
 local class Upstream {
   /// The upstream we are credential injecting for.
@@ -15,41 +18,15 @@ local class Upstream {
   prefix: String = "Bearer "
 }
 
-local upstreams: Listing<Upstream> = new {
-  new {
-    host = "openrouter.ai"
-    name = "openrouter"
-    secret = "openrouter_api_key"
-    env = "OPENROUTER_API_KEY"
-  }
-  new {
-    host = "api.github.com"
-    name = "github"
-    secret = "github_token"
-    env = "GITHUB_TOKEN"
-  }
-  new {
-    // git's smart-HTTP endpoints reject Bearer; they want Basic x-access-token.
-    // Tofu derives GITHUB_TOKEN_BASIC from the PAT at provisioning time.
-    host = "github.com"
-    name = "github_git"
-    secret = "github_token_basic"
-    env = "GITHUB_TOKEN_BASIC"
-    prefix = "Basic "
-  }
-  new {
-    host = "api.firecrawl.dev"
-    name = "firecrawl"
-    secret = "firecrawl_api_key"
-    env = "FIRECRAWL_API_KEY"
-  }
-  new {
-    host = "mcp.context7.com"
-    name = "context7"
-    secret = "context7_api_key"
-    env = "CONTEXT7_API_KEY"
-  }
-}
+local upstreams: List<Upstream> =
+  ((new yaml.Parser {}).parse(read("upstreams.yml").text) as Listing<Dynamic>).toList()
+    .map((d) -> new Upstream {
+      host = d.host
+      name = d.name
+      secret = d.secret
+      env = d.env
+      prefix = if (d.hasProperty("prefix")) d.prefix as String else "Bearer "
+    })
 
 /// One cert covers every chain: it carries a SAN per proxied hostname.
 local downstreamTls = new Dynamic {
@@ -220,7 +197,7 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
 }
 
 static_resources {
-secrets = upstreams.toList().distinctBy((u) -> u.secret).map((u) -> new Dynamic {
+secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
   name = u.secret
   generic_secret { secret { environment_variable = u.env } }
 })
@@ -243,11 +220,11 @@ secrets = upstreams.toList().distinctBy((u) -> u.secret).map((u) -> new Dynamic 
           }
         }
       }
-      filter_chains = upstreams.toList().map((u) -> filterChain(u))
+      filter_chains = upstreams.map((u) -> filterChain(u))
     }
   }
 
-  clusters = upstreams.toList().map((u) -> cluster(u))
+  clusters = upstreams.map((u) -> cluster(u))
 }
 
 output {
