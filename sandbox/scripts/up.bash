@@ -51,8 +51,16 @@ main() {
         if ! created=$(docker image inspect --format '{{.Created}}' "$1" 2>/dev/null); then
             return 1
         fi
+        # Docker emits timestamps like 2026-08-06T00:03:08.922498832-05:00.
+        # jq 1.7.1's fromdateiso8601 requires a literal Z suffix and rejects
+        # fractional seconds and timezone offsets, so strip both and append Z.
         local created_epoch now_epoch
-        created_epoch=$(jq -n --arg ts "$created" '$ts | fromdateiso8601 | floor')
+        created_epoch=$(jq -n --arg ts "$created" '
+            $ts | sub("\\.\\d+"; "")
+                | sub("([+-]\\d{2}:\\d{2})$"; "")
+                | . + "Z"
+                | fromdateiso8601 | floor
+        ')
         now_epoch=$(date +%s)
         local age=$(( now_epoch - created_epoch ))
         (( age >= 0 && age < max_age ))
