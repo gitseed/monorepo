@@ -608,11 +608,11 @@ export default async function (pi: ExtensionAPI) {
       "A short summary and the search embedding are generated automatically.",
     approval: "write",
     parameters: z.object({
-      text: z.string().describe("The text to remember"),
+      content: z.string().describe("The memory content to remember"),
     }),
     async execute(_id, params) {
-      const { text: content } = params as { text: string }
-      if (content === undefined) throw new Error("remember requires a 'text' parameter — the memory content goes in 'text'")
+      const { content } = params as { content: string }
+      if (content === undefined) throw new Error("remember requires a 'content' parameter — the memory content goes in 'content'")
       if (!content.trim()) throw new Error("cannot remember empty text")
       const { id } = await insert("remembered", content)
       return textResult(JSON.stringify({ id }))
