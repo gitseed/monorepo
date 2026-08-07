@@ -12,18 +12,17 @@ main() {
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
-    # Render the compose config from pkl into a temp file so the exit code is
-    # checked (process substitution swallows failures). --project-directory
-    # makes relative build.context paths resolve from sandbox/, not /dev/fd/.
-    local compose_file
-    compose_file=$(mktemp)
-    if ! pkl eval --format yaml sandbox/compose.pkl -o "$compose_file" 2>&1; then
-        rm -f "$compose_file"
-        exit 1
-    fi
-    compose() { docker compose --project-directory sandbox -f "$compose_file" "$@"; }
+    # Render once so a pkl failure exits loudly under set -e, then feed each
+    # compose call via process substitution -- no rendered file on disk.
+    # --project-directory makes relative build.context paths resolve from
+    # sandbox/, not /dev/fd/. Exported for the infisical-spawned subshells.
+    COMPOSE_CONFIG=$(pkl eval --format yaml sandbox/compose.pkl)
+    export COMPOSE_CONFIG
+    compose() {
+        docker compose --project-directory sandbox \
+            -f <(printf '%s\n' "$COMPOSE_CONFIG") "$@"
+    }
     export -f compose
-    export compose_file
 
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
@@ -46,15 +45,12 @@ main() {
         local projects
         if ! projects=$(docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null); then
             echo "WARNING: could not enumerate containers; leaving memory service running" >&2
-            rm -f "$compose_file"
             return $status
         fi
         if printf '%s\n' "$projects" | grep -q '^sandbox-[0-9][0-9]*$'; then
-            rm -f "$compose_file"
             return $status   # another session is still active
         fi
         "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
-        rm -f "$compose_file"
         return $status
     }
     trap cleanup EXIT
