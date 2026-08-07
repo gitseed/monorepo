@@ -23,8 +23,8 @@
   },
   "surfacing": {
     "enabled": true,
-    "minSimilarity": 0.4,
-    "maxSimilarity": 0.95,
-    "perKindLimit": 2
+    "minSimilarity": 0.6,
+    "maxSimilarity": 0.9,
+    "perKindLimit": 1
   }
 }
