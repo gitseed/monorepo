@@ -581,22 +581,10 @@ export default async function (pi: ExtensionAPI) {
       const related = row.embedding ? await surfaceBlock(row.embedding).catch(() => null) : null
       return textResult(related ? `${row.content}\n\n${related}` : row.content)
     },
-    // omp's TUI falls back to a name-keyed renderer registry, and "recall"
-    // is taken by its built-in memory tool — whose renderer reads a details
-    // shape ours doesn't have and displays "no matches" over perfectly good
-    // results. Defining our own renderers takes priority over that fallback.
     renderCall(args, _options, theme) {
       const { id } = args as { id: number }
       const summary = summaryById.get(id)
       return new Text(theme.fg("muted", summary ? `recall(${summary})` : `recall(#${id})`), 0, 0)
-    },
-    renderResult(result, options, theme) {
-      const first = result.content?.[0]
-      const body = first && first.type === "text" ? first.text : ""
-      const shown = options.expanded
-        ? body
-        : `${body.split("\n")[0].slice(0, 120)}${body.length > 120 || body.includes("\n") ? " …" : ""}`
-      return new Text(theme.fg("text", shown), 0, 0)
     },
   })
 
