@@ -45,15 +45,17 @@ main() {
     trap cleanup EXIT
 
     # Rebuild at least every 12 hours to update harness version.
-    cutoff=$(date -d '12 hours ago' -u +%s 2>/dev/null || date -v-12H -u +%s)
     built_recently() {
+        local max_age=$(( 12 * 3600 ))
         local created
-        created=$(docker image inspect "$1" 2>/dev/null \
-            | jq -r '(.[0].Created // empty)[0:19]') || return 1
-        [[ -z "$created" ]] && return 1
-        local epoch
-        epoch=$(date -d "$created" -u +%s 2>/dev/null || date -j -f '%Y-%m-%dT%H:%M:%S' "$created" -u +%s) || return 1
-        (( epoch > cutoff ))
+        if ! created=$(docker image inspect --format '{{.Created}}' "$1" 2>/dev/null); then
+            return 1
+        fi
+        local created_epoch now_epoch
+        created_epoch=$(jq -n --arg ts "$created" '$ts | fromdateiso8601 | floor')
+        now_epoch=$(date +%s)
+        local age=$(( now_epoch - created_epoch ))
+        (( age >= 0 && age < max_age ))
     }
 
     if built_recently credentials-proxy; then
