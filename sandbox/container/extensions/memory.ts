@@ -34,7 +34,7 @@
 import { SQL } from "bun"
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"
 import { Text } from "@oh-my-pi/pi-tui"
-import { type MemoryConfig, loadConfig, type Kind, KINDS } from "./memory/config"
+import { loadConfig, type Kind, KINDS } from "./memory/config"
 import { summarize, embed } from "./memory/openrouter"
 
 const SURFACING_MESSAGE_TYPE = "memory-recollection"
