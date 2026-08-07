@@ -432,13 +432,14 @@ export default async function (pi: ExtensionAPI) {
     description:
       "Surface a small number of memories from previous sessions that are semantically similar to a search string. " +
       "Returns JSON [{id, kind, date, full_text_length, summary}] ordered most-similar first. " +
-      "Use recall with an id to read a memory's full text.",
+      "Use recall with an id to read a memory's full text. " +
+      "With no search_string, returns the most recent explicitly-remembered memories instead.",
     approval: "read",
     parameters: z.object({
       search_string: z
         .string()
-        .min(1)
-        .describe("Text to match memories against (embedding similarity); must be non-empty"),
+        .optional()
+        .describe("Text to match memories against (embedding similarity); omit to browse recent explicitly-remembered memories"),
       type: z
         .enum(["heard", "said", "thought", "remembered", "any"])
         .optional()
@@ -460,7 +461,7 @@ export default async function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       const p = params as {
-        search_string: string
+        search_string?: string
         type?: Kind | "any"
         max_count?: number
         min_date?: string
@@ -471,11 +472,40 @@ export default async function (pi: ExtensionAPI) {
         min_similarity?: number
         max_similarity?: number
       }
-      if (!p.search_string.trim()) {
-        throw new Error(
-          "search_string is empty. recollect is similarity search, not a listing — describe what you are trying to remember",
-        )
+      const limit = Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)
+
+      // No search_string: browse the most recent explicitly-remembered
+      // memories. remembered memories are saved deliberately, so they're
+      // the highest-signal subset; an empty recollect returns them rather
+      // than failing. No embedding call needed — chronological order.
+      if (!p.search_string || !p.search_string.trim()) {
+        const rows = (await db(
+          (s) => s`
+          SELECT id, kind, created_at, content_len, summary
+          FROM memories
+          WHERE session_id <> ${sessionId}
+            AND kind = 'remembered'
+            AND NOT suppressed
+          ORDER BY created_at DESC
+          LIMIT ${limit}`,
+        )) as Array<{
+          id: number | bigint
+          kind: Kind
+          created_at: Date
+          content_len: number
+          summary: string | null
+        }>
+        const memories = rows.map((r) => ({
+          id: Number(r.id),
+          kind: r.kind,
+          date: r.created_at.toISOString(),
+          full_text_length: r.content_len,
+          summary: r.summary,
+        }))
+        for (const m of memories) if (m.summary) summaryById.set(m.id, m.summary)
+        return textResult(JSON.stringify(memories, null, 2))
       }
+
       const vector = await embed(config.embedding, p.search_string)
       if (!vector) throw new Error("embedding service unavailable; cannot search memories right now")
       const kind = p.type && p.type !== "any" ? p.type : null
@@ -496,7 +526,7 @@ export default async function (pi: ExtensionAPI) {
           AND (${p.max_similarity ?? null}::float8 IS NULL
                OR 1 - (embedding <=> ${vector}::vector) <= ${p.max_similarity ?? null})
         ORDER BY embedding <=> ${vector}::vector
-        LIMIT ${Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)}`,
+        LIMIT ${limit}`,
       )) as Array<{
         id: number | bigint
         kind: Kind
