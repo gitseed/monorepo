@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "typescript": {
+      "command": "tsc",
+      "args": ["--lsp", "--stdio"],
+      "fileTypes": [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"],
+      "rootMarkers": [".git"]
+    }
+  }
+}

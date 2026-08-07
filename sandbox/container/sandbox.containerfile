@@ -35,6 +35,11 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
+# TypeScript 7 for LSP tool (references, rename, diagnostics).
+# TS 7 ships a native LSP server (tsc --lsp --stdio); no wrapper needed.
+RUN bun add -g typescript@7 \
+    && ln -sf /root/.bun/bin/tsc /usr/local/bin/tsc
+
 RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
         | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
 
