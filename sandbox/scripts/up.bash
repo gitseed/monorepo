@@ -45,11 +45,15 @@ main() {
     trap cleanup EXIT
 
     # Rebuild at least every 12 hours to update harness version.
-    cutoff=$(date -d '12 hours ago' -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -v-12H -u +%Y-%m-%dT%H:%M:%S)
+    cutoff=$(date -d '12 hours ago' -u +%s 2>/dev/null || date -v-12H -u +%s)
     built_recently() {
         local created
-        created=$(docker image inspect "$1" 2>/dev/null | jq -r '(.[0].Created // empty)[0:19]') || return 1
-        [[ -n "$created" && "$created" > "$cutoff" ]]
+        created=$(docker image inspect "$1" 2>/dev/null \
+            | jq -r '(.[0].Created // empty)[0:19]') || return 1
+        [[ -z "$created" ]] && return 1
+        local epoch
+        epoch=$(date -d "$created" -u +%s 2>/dev/null || date -j -f '%Y-%m-%dT%H:%M:%S' "$created" -u +%s) || return 1
+        (( epoch > cutoff ))
     }
 
     if built_recently credentials-proxy; then
