@@ -494,15 +494,16 @@ export default async function (pi: ExtensionAPI) {
       // 'remembered' (explicitly saved, highest signal). All other filters
       // (type, date, length) are honored — a caller asking for recent
       // 'heard' memories with no query gets exactly that, not a silent
-      // fallback to remembered.
+      // fallback to remembered. An explicit type:"any" drops the kind
+      // filter entirely (mixed recent), mirroring the similarity path.
       if (!p.search_string || !p.search_string.trim()) {
-        const browseKind: Kind = p.type && p.type !== "any" ? p.type : "remembered"
+        const browseKind: Kind | null = !p.type ? "remembered" : p.type === "any" ? null : p.type
         const rows = (await db(
           (s) => s`
           SELECT id, kind, created_at, content_len, summary
           FROM memories
           WHERE session_id <> ${sessionId}
-            AND kind = ${browseKind}
+            AND (${browseKind}::text IS NULL OR kind = ${browseKind})
             AND NOT suppressed
             AND (${p.min_date ?? null}::timestamptz IS NULL OR created_at >= ${p.min_date ?? null}::timestamptz)
             AND (${p.max_date ?? null}::timestamptz IS NULL OR created_at <= ${p.max_date ?? null}::timestamptz)
