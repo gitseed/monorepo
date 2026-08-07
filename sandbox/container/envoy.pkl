@@ -195,6 +195,16 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
       ["@type"] = "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
       sni = u.host
       common_tls_context {
+        // Envoy's default curve list (X25519, P-256) rejects P-384 ECDSA
+        // certs on TLS 1.2 upstreams (BoringSSL BAD_ECC_CERT) — context7's
+        // AWS ELB is exactly that combination.
+        tls_params {
+          ecdh_curves {
+            "X25519"
+            "P-256"
+            "P-384"
+          }
+        }
         validation_context {
           trusted_ca { filename = "/etc/ssl/certs/ca-certificates.crt" }
           match_typed_subject_alt_names {
