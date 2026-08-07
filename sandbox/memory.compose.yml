@@ -14,7 +14,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - socket:/var/run/postgresql
-      - ./memory/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./container/extensions/memory/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "127.0.0.1:5432:5432"
     restart: unless-stopped
