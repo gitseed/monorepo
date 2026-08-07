@@ -44,4 +44,11 @@ main() {
 
 main "$@"
 
+# Resize the PTY from host-provided COLUMNS/LINES so omp reads the correct
+# window size via ioctl(TIOCGWINSZ) instead of defaulting to 80x24.
+# docker compose run doesn't propagate SIGWINCH, so we set it explicitly.
+if [[ -t 0 && -n "${COLUMNS:-}" && -n "${LINES:-}" ]]; then
+    stty cols "$COLUMNS" rows "$LINES" 2>/dev/null || true
+fi
+
 exec "$@"

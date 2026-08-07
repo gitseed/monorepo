@@ -87,11 +87,20 @@ main() {
         set -- omp
     fi
 
+    # Capture host terminal dimensions to propagate into the container.
+    # docker compose run doesn't propagate SIGWINCH, so the container's PTY
+    # defaults to 80x24. We pass COLUMNS/LINES as env vars and the entrypoint
+    # uses stty to resize the PTY from them.
+    local dims=()
+    if [[ -t 0 ]]; then
+        dims=(-e "COLUMNS=$(tput cols)" -e "LINES=$(tput lines)")
+    fi
+
     # The run must also be under infisical so envs are populated
     if [[ -t 0 && -t 1 ]]; then
-        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm sandbox "$@"
+        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm "${dims[@]}" sandbox "$@"
     else
-        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm -T sandbox "$@"
+        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm -T "${dims[@]}" sandbox "$@"
     fi
 }
 
