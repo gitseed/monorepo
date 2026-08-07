@@ -426,6 +426,22 @@ export default async function (pi: ExtensionAPI) {
 
   const { z } = pi.zod
 
+  /** Map DB rows to the recollect/recall JSON shape and prime the
+   *  summary cache so a follow-up recall renders with its summary. */
+  function toMemories(
+    rows: Array<{ id: number | bigint; kind: Kind; created_at: Date; content_len: number; summary: string | null }>,
+  ) {
+    const memories = rows.map((r) => ({
+      id: Number(r.id),
+      kind: r.kind,
+      date: r.created_at.toISOString(),
+      full_text_length: r.content_len,
+      summary: r.summary,
+    }))
+    for (const m of memories) if (m.summary) summaryById.set(m.id, m.summary)
+    return memories
+  }
+
   pi.registerTool({
     name: "recollect",
     label: "Recollect",
@@ -474,18 +490,24 @@ export default async function (pi: ExtensionAPI) {
       }
       const limit = Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)
 
-      // No search_string: browse the most recent explicitly-remembered
-      // memories. remembered memories are saved deliberately, so they're
-      // the highest-signal subset; an empty recollect returns them rather
-      // than failing. No embedding call needed — chronological order.
+      // No search_string: browse the most recent memories, defaulting to
+      // 'remembered' (explicitly saved, highest signal). All other filters
+      // (type, date, length) are honored — a caller asking for recent
+      // 'heard' memories with no query gets exactly that, not a silent
+      // fallback to remembered.
       if (!p.search_string || !p.search_string.trim()) {
+        const browseKind: Kind = p.type && p.type !== "any" ? p.type : "remembered"
         const rows = (await db(
           (s) => s`
           SELECT id, kind, created_at, content_len, summary
           FROM memories
           WHERE session_id <> ${sessionId}
-            AND kind = 'remembered'
+            AND kind = ${browseKind}
             AND NOT suppressed
+            AND (${p.min_date ?? null}::timestamptz IS NULL OR created_at >= ${p.min_date ?? null}::timestamptz)
+            AND (${p.max_date ?? null}::timestamptz IS NULL OR created_at <= ${p.max_date ?? null}::timestamptz)
+            AND content_len >= ${p.min_text_length ?? 0}
+            AND (${p.max_text_length ?? null}::int IS NULL OR content_len <= ${p.max_text_length ?? null})
           ORDER BY created_at DESC
           LIMIT ${limit}`,
         )) as Array<{
@@ -495,15 +517,7 @@ export default async function (pi: ExtensionAPI) {
           content_len: number
           summary: string | null
         }>
-        const memories = rows.map((r) => ({
-          id: Number(r.id),
-          kind: r.kind,
-          date: r.created_at.toISOString(),
-          full_text_length: r.content_len,
-          summary: r.summary,
-        }))
-        for (const m of memories) if (m.summary) summaryById.set(m.id, m.summary)
-        return textResult(JSON.stringify(memories, null, 2))
+        return textResult(JSON.stringify(toMemories(rows), null, 2))
       }
 
       const vector = await embed(config.embedding, p.search_string)
@@ -534,15 +548,7 @@ export default async function (pi: ExtensionAPI) {
         content_len: number
         summary: string | null
       }>
-      const memories = rows.map((r) => ({
-        id: Number(r.id),
-        kind: r.kind,
-        date: r.created_at.toISOString(),
-        full_text_length: r.content_len,
-        summary: r.summary,
-      }))
-      for (const m of memories) if (m.summary) summaryById.set(m.id, m.summary)
-      return textResult(JSON.stringify(memories, null, 2))
+      return textResult(JSON.stringify(toMemories(rows), null, 2))
     },
   })
 
