@@ -7,7 +7,6 @@ Custom [oh-my-pi](https://omp.sh/) extensions loaded into the sandboxed agent. E
 | [memory](memory/) | `memory.ts` | Captures heard/said/thought memories to pgvector; `recollect`/`recall`/`remember`/`suppress` tools + unprompted surfacing |
 | [morph](morph/) | `morph.ts` | Morph Fast Apply — merges partial edit snippets into full files via OpenRouter |
 | [openrouter-advisor](openrouter-advisor/) | `openrouter-advisor.ts` | Mid-generation advisor tools (e.g. `consult_fable`, `openrouter_advisor`), each defined by a JSON in `advisors/` |
-| [read-patch](read-patch/) | `read-patch.ts` | Temporary shadow of the built-in `read` tool to hide `memory://` until upstream PR #7675 ships |
 
 ## Layout
 
@@ -26,8 +25,6 @@ extensions/
 │   └── advisors/                # one JSON per advisor tool
 │       ├── openrouter-advisor.json
 │       └── consult-fable.json
-├── read-patch.ts                # entry: temporary read shadow
-├── read-patch/                  # docs
 ├── package.json                 # shared typecheck infra
 └── tsconfig.json
 ```

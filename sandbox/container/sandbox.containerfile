@@ -112,10 +112,6 @@ COPY extensions/memory/memory.json /root/.omp/agent/memory.json
 # System-prompt contract for the memory system and automatic surfacing.
 COPY extensions/memory/APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
 
-# TEMPORARY: shadow the built-in read tool to drop the memory:// schema
-# mention (oh-my-pi #7673); delete once upstream PR #7675 ships.
-COPY extensions/read-patch.ts /root/.omp/agent/extensions/read-patch.ts
-
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
 COPY entrypoint.sh /entrypoint.sh
