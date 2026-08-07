@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Load before any work on the repo — before writing, editing, deleting, or moving any file. Branch-per-task, commit as you go, push and PR when done. Never commit to main, never amend, never force push. The full workflow (branch → commit → push → PR) is the default and does not require user confirmation — never ask "ready to commit?"
+description: Load before any work on the repo. Branch-per-task, commit, push, and PR without asking. Never commit to main, never amend, never force push.
 ---
 
 # Git workflow
