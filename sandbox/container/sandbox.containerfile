@@ -107,10 +107,6 @@ COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
 COPY extensions/openrouter-advisor/advisors/ /root/.omp/agent/extensions/openrouter-advisor/advisors/
 
-# Context7 — up-to-date library documentation via resolve-library-id and
-# query-docs tools. API key optional (IP-based rate limits without one).
-COPY extensions/context7.ts /root/.omp/agent/extensions/context7.ts
-
 # Memory extension — captures memories to the shared postgres over its unix
 # socket via Bun's native SQL bindings. Configured (incl. enabled/disabled)
 # by memory.json. The entry point imports ./memory/{config,openrouter};

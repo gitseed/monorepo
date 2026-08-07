@@ -44,7 +44,7 @@ local upstreams: Listing<Upstream> = new {
     env = "FIRECRAWL_API_KEY"
   }
   new {
-    host = "context7.com"
+    host = "mcp.context7.com"
     name = "context7"
     secret = "context7_api_key"
     env = "CONTEXT7_API_KEY"

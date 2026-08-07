@@ -34,7 +34,7 @@ services:
       - "proxy:api.github.com"
       - "proxy:github.com"
       - "proxy:api.firecrawl.dev"
-      - "proxy:context7.com"
+      - "proxy:mcp.context7.com"
     volumes:
       - "${GIT_PROJECT_DIR:-..}:/workspace"
       # Postgres unix socket from memory.compose.yml — the only path between
