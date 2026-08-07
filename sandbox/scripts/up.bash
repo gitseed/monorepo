@@ -12,6 +12,9 @@ main() {
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
+    # Render the compose file from pkl so the source of truth is compose.pkl.
+    pkl eval --format yaml sandbox/compose.pkl -o sandbox/compose.yml
+
     COMPOSE=(docker compose -f sandbox/compose.yml)
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR

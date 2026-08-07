@@ -1,0 +1,108 @@
+/// Rendered to compose.yml by scripts/up.bash. The proxied upstreams mirror
+/// container/envoy.pkl — keep them in sync when adding or removing a service.
+module compose
+
+local class Upstream {
+  host: String
+  name: String
+  env: String
+}
+
+local upstreams: Listing<Upstream> = new {
+  new {
+    host = "openrouter.ai"
+    name = "openrouter"
+    env = "OPENROUTER_API_KEY"
+  }
+  new {
+    host = "api.github.com"
+    name = "github"
+    env = "GITHUB_TOKEN"
+  }
+  new {
+    // git's smart-HTTP endpoints reject Bearer; they want Basic x-access-token.
+    // Tofu derives GITHUB_TOKEN_BASIC from the PAT at provisioning time.
+    host = "github.com"
+    name = "github_git"
+    env = "GITHUB_TOKEN_BASIC"
+  }
+  new {
+    host = "api.firecrawl.dev"
+    name = "firecrawl"
+    env = "FIRECRAWL_API_KEY"
+  }
+  new {
+    host = "mcp.context7.com"
+    name = "context7"
+    env = "CONTEXT7_API_KEY"
+  }
+}
+
+services {
+  proxy {
+    image = "credentials-proxy"
+    build {
+      context = "./container"
+      dockerfile = "proxy.containerfile"
+    }
+    environment = upstreams.toList().map((u) -> u.env)
+      + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY")
+    healthcheck {
+      // The envoy image has no curl.
+      test = new Listing<String> { "CMD-SHELL"; "bash -c '</dev/tcp/127.0.0.1/443'" }
+      interval = "1s"
+      timeout = "2s"
+      retries = 30
+      start_period = "1s"
+    }
+  }
+  sandbox {
+    image = "sandbox"
+    build {
+      context = "./container"
+      dockerfile = "sandbox.containerfile"
+      secrets {
+        "ca_cert"
+      }
+    }
+    stdin_open = true
+    tty = true
+    secrets {
+      "git_signing_key"
+    }
+    links = upstreams.toList().map((u) -> "proxy:" + u.host)
+    volumes {
+      "${GIT_PROJECT_DIR:-..}:/workspace"
+      // Postgres unix socket from memory.compose.yml — the only path between
+      // sandbox and the memory database (no shared network).
+      "memory-socket:/var/run/postgresql"
+    }
+    cap_drop {
+      "NET_RAW"
+      "NET_ADMIN"
+    }
+    security_opt {
+      "no-new-privileges:true"
+    }
+  }
+}
+
+secrets {
+  ca_cert {
+    environment = "CREDENTIALS_PROXY_CA_CERT"
+  }
+  git_signing_key {
+    environment = "GIT_SIGNING_KEY"
+  }
+}
+
+volumes {
+  ["memory-socket"] {
+    ["external"] = true
+    name = "omp-memory-socket"
+  }
+}
+
+output {
+  renderer = new YamlRenderer {}
+}
