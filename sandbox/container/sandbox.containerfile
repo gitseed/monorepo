@@ -37,7 +37,9 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
 
 # TypeScript 7 for LSP tool (references, rename, diagnostics).
 # TS 7 ships a native LSP server (tsc --lsp --stdio); no wrapper needed.
-RUN bun add -g typescript@7 \
+# Pinned to 7.0.2 — a future 7.x release could break the LSP server (e.g. the
+# 7.0 preview omitted tsserver.js entirely). Bump deliberately after testing.
+RUN bun add -g typescript@7.0.2 \
     && ln -sf /root/.bun/bin/tsc /usr/local/bin/tsc
 
 RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
