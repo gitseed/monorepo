@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Branch-per-task, commit as you go, push and PR when done — never commit to main, never amend, never force push. Load before any work on the repo.
+description: Load before any work on the repo. Branch-per-task, commit, push, and PR without asking. Never commit to main, never amend, never force push.
 ---
 
 # Git workflow
