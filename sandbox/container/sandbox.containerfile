@@ -35,6 +35,14 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
+# TypeScript language server for the LSP tool (references, rename, diagnostics).
+# typescript-language-server wraps tsserver from the typescript npm package.
+# Pinned: typescript 7.x preview omits tsserver.js, which breaks the language server.
+RUN bun add -g typescript-language-server typescript@5.9.2 \
+    && ln -sf /root/.bun/bin/typescript-language-server /usr/local/bin/typescript-language-server \
+    && ln -sf /root/.bun/bin/tsc /usr/local/bin/tsc \
+    && ln -sf /root/.bun/bin/tsserver /usr/local/bin/tsserver
+
 RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
         | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
 

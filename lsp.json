@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "typescript-language-server": {
+      "command": "typescript-language-server",
+      "args": ["--stdio"],
+      "rootMarkers": [".git"]
+    }
+  }
+}
