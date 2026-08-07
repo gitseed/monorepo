@@ -1,20 +1,9 @@
 ---
 name: git-workflow
-description: Branch-per-task, commit as you go, push and PR when done — never commit to main, never amend, never force push. Load before any work on the repo.
+description: Load before any work on the repo — before writing, editing, deleting, or moving any file. Branch-per-task, commit as you go, push and PR when done. Never commit to main, never amend, never force push. The full workflow (branch → commit → push → PR) is the default and does not require user confirmation — never ask "ready to commit?"
 ---
 
 # Git workflow
-
-## Load this skill before any code change
-
-This skill MUST be loaded before you write, edit, delete, or move any
-file in the repo. If you are about to change code and have not loaded this
-skill, stop and load it first.
-
-The full workflow is: branch → make changes → commit → push → open PR.
-These steps are not optional and do not require user confirmation. Never
-ask "ready to commit?" — the user asked for a change, so you make the
-change and you ship it.
 
 Worktrees, commit as you go, push and PR.
 
