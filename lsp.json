@@ -1,8 +1,9 @@
 {
   "servers": {
-    "typescript-language-server": {
-      "command": "typescript-language-server",
-      "args": ["--stdio"],
+    "typescript": {
+      "command": "tsc",
+      "args": ["--lsp", "--stdio"],
+      "fileTypes": [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"],
       "rootMarkers": [".git"]
     }
   }

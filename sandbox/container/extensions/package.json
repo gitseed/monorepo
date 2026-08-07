@@ -9,6 +9,6 @@
     "@oh-my-pi/pi-coding-agent": "*",
     "@oh-my-pi/pi-tui": "^17.2.9",
     "@types/bun": "*",
-    "typescript": "5.9.2"
+    "typescript": "^7"
   }
 }
