@@ -1,0 +1,78 @@
+/// Rendered to compose config by scripts/up.bash via process substitution.
+/// The proxied upstreams are shared from container/upstreams.yml — the single
+/// source of truth also read by container/envoy.pkl and the tofu cert.
+module compose
+
+import "pkl:yaml"
+
+local rawUpstreams =
+  ((new yaml.Parser {}).parse(read("container/upstreams.yml").text) as Listing<Dynamic>).toList()
+
+services {
+  proxy {
+    image = "credentials-proxy"
+    build {
+      context = "./container"
+      dockerfile = "proxy.containerfile"
+    }
+    environment = rawUpstreams.map((u) -> u.env as String)
+      + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY")
+    healthcheck {
+      // The envoy image has no curl.
+      test = new Listing<String> { "CMD-SHELL"; "bash -c '</dev/tcp/127.0.0.1/443'" }
+      interval = "1s"
+      timeout = "2s"
+      retries = 30
+      start_period = "1s"
+    }
+  }
+  sandbox {
+    image = "sandbox"
+    build {
+      context = "./container"
+      dockerfile = "sandbox.containerfile"
+      secrets {
+        "ca_cert"
+      }
+    }
+    stdin_open = true
+    tty = true
+    secrets {
+      "git_signing_key"
+    }
+    links = rawUpstreams.map((u) -> "proxy:" + (u.host as String))
+    volumes {
+      "${GIT_PROJECT_DIR:-..}:/workspace"
+      // Postgres unix socket from memory.compose.yml — the only path between
+      // sandbox and the memory database (no shared network).
+      "memory-socket:/var/run/postgresql"
+    }
+    cap_drop {
+      "NET_RAW"
+      "NET_ADMIN"
+    }
+    security_opt {
+      "no-new-privileges:true"
+    }
+  }
+}
+
+secrets {
+  ca_cert {
+    environment = "CREDENTIALS_PROXY_CA_CERT"
+  }
+  git_signing_key {
+    environment = "GIT_SIGNING_KEY"
+  }
+}
+
+volumes {
+  ["memory-socket"] {
+    ["external"] = true
+    name = "omp-memory-socket"
+  }
+}
+
+output {
+  renderer = new YamlRenderer {}
+}

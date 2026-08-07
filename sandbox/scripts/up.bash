@@ -12,7 +12,18 @@ main() {
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
-    COMPOSE=(docker compose -f sandbox/compose.yml)
+    # Render once so a pkl failure exits loudly under set -e, then feed each
+    # compose call via process substitution -- no rendered file on disk.
+    # --project-directory makes relative build.context paths resolve from
+    # sandbox/, not /dev/fd/. Exported for the infisical-spawned subshells.
+    COMPOSE_CONFIG=$(pkl eval --format yaml sandbox/compose.pkl)
+    export COMPOSE_CONFIG
+    compose() {
+        docker compose --project-directory sandbox \
+            -f <(printf '%s\n' "$COMPOSE_CONFIG") "$@"
+    }
+    export -f compose
+
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
     MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
@@ -23,7 +34,7 @@ main() {
 
     cleanup() {
         local status=$?
-        if ! "${COMPOSE[@]}" -p "$PROJECT" down --timeout 3 2>&1; then
+        if ! compose -p "$PROJECT" down --timeout 3 2>&1; then
             echo "WARNING: compose down failed -- the session proxy may still" >&2
             echo "         be running with injected credentials. Reap by label:" >&2
             echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
@@ -67,21 +78,19 @@ main() {
     }
 
     if built_recently credentials-proxy; then
-        "${COMPOSE[@]}" -p "$PROJECT" build proxy
+        compose -p "$PROJECT" build proxy
     else
-        "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache proxy
+        compose -p "$PROJECT" build --pull --no-cache proxy
     fi
 
     if built_recently sandbox; then
-        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" build sandbox
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build sandbox
     else
-        infisical run -- \
-            "${COMPOSE[@]}" -p "$PROJECT" build --pull --no-cache sandbox
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build --pull --no-cache sandbox
     fi
 
     echo "starting credentials proxy..."
-    infisical run -- \
-        "${COMPOSE[@]}" -p "$PROJECT" up -d --wait proxy
+    infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" up -d --wait proxy
 
     if [[ $# -eq 0 ]]; then
         set -- omp
@@ -89,9 +98,9 @@ main() {
 
     # The run must also be under infisical so envs are populated
     if [[ -t 0 && -t 1 ]]; then
-        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm sandbox "$@"
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm sandbox "$@"
     else
-        infisical run -- "${COMPOSE[@]}" -p "$PROJECT" run --rm -T sandbox "$@"
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T sandbox "$@"
     fi
 }
 
