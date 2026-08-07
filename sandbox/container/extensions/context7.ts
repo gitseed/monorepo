@@ -2,20 +2,13 @@
 //
 // Two tools: resolve-library-id (search by name) and query-docs (fetch docs
 // by library ID). Both call the Context7 REST API at context7.com/api.
-// Authentication is optional (IP-based rate limits without a key); set
-// CONTEXT7_API_KEY for higher quotas.
-//
-// Skill: context7-docs teaches the agent when to reach for these tools.
+// The API key is injected by the Envoy credentials proxy — the extension
+// sends no Authorization header; the proxy adds it.
 
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { z } from "zod";
 
 const BASE_URL = "https://context7.com/api";
-
-function authHeaders(): Record<string, string> {
-  const apiKey = process.env.CONTEXT7_API_KEY;
-  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-}
 
 async function parseErrorResponse(response: Response): Promise<string> {
   try {
@@ -66,7 +59,7 @@ export default function (pi: ExtensionAPI) {
       url.searchParams.set("query", query);
       url.searchParams.set("libraryName", libraryName);
 
-      const response = await fetch(url, { headers: authHeaders() });
+      const response = await fetch(url);
       if (!response.ok) {
         return textResult(await parseErrorResponse(response));
       }
@@ -132,7 +125,7 @@ export default function (pi: ExtensionAPI) {
       url.searchParams.set("query", query);
       url.searchParams.set("libraryId", libraryId);
 
-      const response = await fetch(url, { headers: authHeaders() });
+      const response = await fetch(url);
       if (!response.ok) {
         return textResult(await parseErrorResponse(response));
       }

@@ -42,4 +42,4 @@ If the user supplies a library ID in `/org/project` or `/org/project/version` fo
 
 - Do not call either tool more than 3 times per question.
 - Do not pass API keys, passwords, credentials, personal data, or proprietary code as the `query` argument — it is sent to the Context7 API.
-- Authentication uses the `CONTEXT7_API_KEY` environment variable. Get a key at https://context7.com/dashboard if requests fail with an auth error.
+- The API key is injected by the Envoy credentials proxy; no local configuration needed.
