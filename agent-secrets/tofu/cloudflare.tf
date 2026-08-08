@@ -47,7 +47,7 @@ resource "cloudflare_api_token" "readonly" {
       resources = permission_group_name == "com.cloudflare.api.user" ? jsonencode(
         { "${permission_group_name}.${data.cloudflare_user.me.id}" = "*" }
         ) : permission_group_name == "com.cloudflare.edge.r2.bucket" ? jsonencode(
-        { local.r2_tofu_bucket = "*" }
+        { "${local.r2_tofu_bucket}" = "*" }
         ) : jsonencode(
         { "${permission_group_name}.*" = "*" }
         )
