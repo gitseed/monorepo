@@ -15,7 +15,7 @@ services {
       context = "./container"
       dockerfile = "proxy.containerfile"
     }
-    environment = rawUpstreams.flatMap((u) -> (u.env.toList() as List<String>)).distinctBy((x) -> x)
+    environment = rawUpstreams.map((u) -> u.env as String)
       + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY")
     healthcheck {
       // The envoy image has no curl.
