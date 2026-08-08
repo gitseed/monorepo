@@ -1,21 +1,64 @@
 - host: openrouter.ai
   name: openrouter
   secret: openrouter_api_key
-  env: OPENROUTER_API_KEY
+  env:
+    - OPENROUTER_API_KEY
 - host: api.github.com
   name: github
   secret: github_token
-  env: GITHUB_TOKEN
+  env:
+    - GITHUB_TOKEN
 - host: github.com
   name: github_git
   secret: github_token_basic
-  env: GITHUB_TOKEN_BASIC
+  env:
+    - GITHUB_TOKEN_BASIC
   prefix: "Basic "
 - host: api.firecrawl.dev
   name: firecrawl
   secret: firecrawl_api_key
-  env: FIRECRAWL_API_KEY
+  env:
+    - FIRECRAWL_API_KEY
 - host: mcp.context7.com
   name: context7
   secret: context7_api_key
-  env: CONTEXT7_API_KEY
+  env:
+    - CONTEXT7_API_KEY
+- host: api.cloudflare.com
+  name: cloudflare
+  secret: cloudflare_api_token
+  env:
+    - CLOUDFLARE_API_TOKEN
+- host: sts.amazonaws.com
+  name: aws_sts
+  auth_type: aws_sigv4
+  service_name: sts
+  region: us-east-1
+  env:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+- host: ec2.us-east-2.amazonaws.com
+  name: aws_ec2
+  auth_type: aws_sigv4
+  service_name: ec2
+  region: us-east-2
+  env:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+- host: iam.amazonaws.com
+  name: aws_iam
+  auth_type: aws_sigv4
+  service_name: iam
+  region: us-east-1
+  env:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+- host: s3.us-east-2.amazonaws.com
+  name: aws_s3
+  auth_type: aws_sigv4
+  service_name: s3
+  region: us-east-2
+  use_unsigned_payload: true
+  env:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY

@@ -10,23 +10,39 @@ local class Upstream {
   host: String
   /// Short name for the cluster, routes, and stats.
   name: String
-  /// generic_secret name holding the injected credential.
-  secret: String
-  /// Environment variable the credential arrives in.
-  env: String
-  /// Authorization scheme prefix for the injected header.
+  /// generic_secret name holding the injected credential (bearer only).
+  secret: String? = null
+  /// Environment variables the credential(s) arrive in.
+  /// Bearer: one env var holding the token. AWS: access key ID + secret key.
+  env: List<String>
+  /// Authorization scheme prefix for the injected header (bearer only).
   prefix: String = "Bearer "
+  /// "bearer" (default) or "aws_sigv4".
+  auth_type: String = "bearer"
+  /// AWS service name for SigV4 signing (aws_sigv4 only).
+  service_name: String? = null
+  /// AWS region for SigV4 signing (aws_sigv4 only).
+  region: String? = null
+  /// Whether to skip payload hashing (aws_sigv4 only, S3).
+  use_unsigned_payload: Boolean = false
 }
 
 local upstreams: List<Upstream> =
   ((new yaml.Parser {}).parse(read("upstreams.yml").text) as Listing<Dynamic>).toList()
     .map((d) -> new Upstream {
-      host = d.host
-      name = d.name
-      secret = d.secret
-      env = d.env
+      host = d.host as String
+      name = d.name as String
+      secret = if (d.hasProperty("secret")) d.secret as String else null
+      env = d.env.toList() as List<String>
       prefix = if (d.hasProperty("prefix")) d.prefix as String else "Bearer "
+      auth_type = if (d.hasProperty("auth_type")) d.auth_type as String else "bearer"
+      service_name = if (d.hasProperty("service_name")) d.service_name as String else null
+      region = if (d.hasProperty("region")) d.region as String else null
+      use_unsigned_payload = if (d.hasProperty("use_unsigned_payload")) d.use_unsigned_payload as Boolean else false
     })
+
+local bearerUpstreams = upstreams.filter((u) -> u.auth_type == "bearer")
+local awsUpstreams = upstreams.filter((u) -> u.auth_type == "aws_sigv4")
 
 /// One cert covers every chain: it carries a SAN per proxied hostname.
 local downstreamTls = new Dynamic {
@@ -84,13 +100,31 @@ local function credentialInjector(u: Upstream): Dynamic = new Dynamic {
       name = "envoy.http.injected_credentials.generic"
       typed_config {
         ["@type"] = "type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic"
-        credential { name = u.secret }
+        credential { name = u.secret as String }
         header = "Authorization"
         header_value_prefix = u.prefix
       }
     }
   }
 }
+
+local function awsRequestSigning(u: Upstream): Dynamic = new Dynamic {
+  name = "envoy.filters.http.aws_request_signing"
+  typed_config {
+    ["@type"] = "type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigning"
+    service_name = u.service_name as String
+    region = u.region as String
+    use_unsigned_payload = u.use_unsigned_payload
+    match_excluded_headers {
+      new { prefix = "x-envoy" }
+      new { prefix = "x-forwarded" }
+      new { exact = "x-amzn-trace-id" }
+    }
+  }
+}
+
+local function authFilter(u: Upstream): Dynamic =
+  if (u.auth_type == "aws_sigv4") awsRequestSigning(u) else credentialInjector(u)
 
 /// Route and credential are selected together by SNI.
 local function filterChain(u: Upstream): Dynamic = new Dynamic {
@@ -125,7 +159,7 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
         }
         access_log { stdoutAccessLog }
         http_filters {
-          credentialInjector(u)
+          authFilter(u)
           routerFilter
         }
       }
@@ -197,10 +231,10 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
 }
 
 static_resources {
-secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
-  name = u.secret
-  generic_secret { secret { environment_variable = u.env } }
-})
+  secrets = bearerUpstreams.distinctBy((u) -> u.secret as String).map((u) -> new Dynamic {
+    name = u.secret as String
+    generic_secret { secret { environment_variable = u.env[0] } }
+  })
 
   listeners {
     new {
