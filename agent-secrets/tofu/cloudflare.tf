@@ -1,12 +1,17 @@
 # A read-only Cloudflare API token for the agent.
 # Uses the admin Cloudflare token from ouroboros to create a scoped
 # read-only token, stored directly in the agent Infisical project.
+#
+# R2 access is restricted to the "tofu" bucket only — the "tofu-sensitive"
+# bucket contains state with secrets and must not be accessible.
 
 data "cloudflare_user" "me" {}
 
 data "cloudflare_api_token_permission_groups_list" "all" {}
 
 locals {
+  cf_account_id = nonsensitive(data.infisical_secrets.ouroboros.secrets.CLOUDFLARE_ACCOUNT_ID.value)
+
   cf_perms_scope_to_ids = transpose({
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.scopes
@@ -22,6 +27,10 @@ locals {
       local.cf_perms_ids_to_names[id] => id
     }
   }
+
+  # R2 bucket resource identifier for the "tofu" bucket (jurisdiction "default").
+  # Excludes "tofu-sensitive" which contains state with secrets.
+  r2_tofu_bucket = "com.cloudflare.edge.r2.bucket.${local.cf_account_id}_default_tofu"
 }
 
 resource "cloudflare_api_token" "readonly" {
@@ -37,6 +46,8 @@ resource "cloudflare_api_token" "readonly" {
       ]
       resources = permission_group_name == "com.cloudflare.api.user" ? jsonencode(
         { "${permission_group_name}.${data.cloudflare_user.me.id}" = "*" }
+        ) : permission_group_name == "com.cloudflare.edge.r2.bucket" ? jsonencode(
+        { local.r2_tofu_bucket = "*" }
         ) : jsonencode(
         { "${permission_group_name}.*" = "*" }
         )
