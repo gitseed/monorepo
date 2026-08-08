@@ -442,17 +442,13 @@ export default async function (pi: ExtensionAPI) {
     return memories
   }
 
-  pi.registerTool({
-    name: "recollect",
-    label: "Recollect",
-    description:
-      "Surface a small number of memories from previous sessions that are semantically similar to a search string. " +
-      "Returns JSON [{id, kind, date, full_text_length, summary}] ordered most-similar first. " +
-      "Use recall with an id to read a memory's full text. " +
-      "With no search_string, returns the most recent explicitly-remembered memories instead.",
-    approval: "read",
-    parameters: z.object({
-      search_string: z
+  // Schemas are .strict() and re-parsed in execute: pi passes params through
+  // unvalidated, and default Zod parsing strips unknown keys, so a misnamed
+  // parameter would silently degrade to a no-filter browse instead of
+  // erroring back to the model.
+  const recollectParams = z
+    .object({
+      query: z
         .string()
         .optional()
         .describe("Text to match memories against (embedding similarity); omit to browse recent explicitly-remembered memories"),
@@ -460,7 +456,7 @@ export default async function (pi: ExtensionAPI) {
         .enum(["heard", "said", "thought", "remembered", "any"])
         .optional()
         .describe("Only memories of this kind (default any)"),
-      max_count: z
+      limit: z
         .number()
         .int()
         .min(1)
@@ -474,29 +470,30 @@ export default async function (pi: ExtensionAPI) {
       include_suppressed: z.boolean().optional().describe("Also search suppressed memories (default false)"),
       min_similarity: z.number().optional().describe("Cosine similarity floor, -1..1 (default none)"),
       max_similarity: z.number().optional().describe("Cosine similarity ceiling, -1..1 (default none)"),
-    }),
-    async execute(_id, params) {
-      const p = params as {
-        search_string?: string
-        type?: Kind | "any"
-        max_count?: number
-        min_date?: string
-        max_date?: string
-        min_text_length?: number
-        max_text_length?: number
-        include_suppressed?: boolean
-        min_similarity?: number
-        max_similarity?: number
-      }
-      const limit = Math.min(p.max_count ?? config.recollect.defaultCount, config.recollect.maxCount)
+    })
+    .strict()
 
-      // No search_string: browse the most recent memories, defaulting to
+  pi.registerTool({
+    name: "recollect",
+    label: "Recollect",
+    description:
+      "Surface a small number of memories from previous sessions that are semantically similar to a query. " +
+      "Returns JSON [{id, kind, date, full_text_length, summary}] ordered most-similar first. " +
+      "Use recall with an id to read a memory's full text. " +
+      "With no query, returns the most recent explicitly-remembered memories instead.",
+    approval: "read",
+    parameters: recollectParams,
+    async execute(_id, params) {
+      const p = recollectParams.parse(params)
+      const limit = Math.min(p.limit ?? config.recollect.defaultCount, config.recollect.maxCount)
+
+      // No query: browse the most recent memories, defaulting to
       // 'remembered' (explicitly saved, highest signal). All other filters
       // (type, date, length) are honored — a caller asking for recent
       // 'heard' memories with no query gets exactly that, not a silent
       // fallback to remembered. An explicit type:"any" drops the kind
       // filter entirely (mixed recent), mirroring the similarity path.
-      if (!p.search_string || !p.search_string.trim()) {
+      if (!p.query || !p.query.trim()) {
         const browseKind: Kind | null = !p.type ? "remembered" : p.type === "any" ? null : p.type
         const rows = (await db(
           (s) => s`
@@ -521,7 +518,7 @@ export default async function (pi: ExtensionAPI) {
         return textResult(JSON.stringify(toMemories(rows), null, 2))
       }
 
-      const vector = await embed(config.embedding, p.search_string)
+      const vector = await embed(config.embedding, p.query)
       if (!vector) throw new Error("embedding service unavailable; cannot search memories right now")
       const kind = p.type && p.type !== "any" ? p.type : null
       const rows = (await db(
@@ -553,16 +550,17 @@ export default async function (pi: ExtensionAPI) {
     },
   })
 
+  const idParams = z.object({ id: z.number().int().describe("Memory id") }).strict()
+  const rememberParams = z.object({ content: z.string().describe("The memory content to remember") }).strict()
+
   pi.registerTool({
     name: "recall",
     label: "Recall",
     description: "Read the full text of one memory by id (ids come from recollect or remember).",
     approval: "read",
-    parameters: z.object({
-      id: z.number().int().describe("Memory id"),
-    }),
+    parameters: idParams,
     async execute(_id, params) {
-      const { id } = params as { id: number }
+      const { id } = idParams.parse(params)
       const [row] = (await db(
         (s) => s`
         SELECT content, summary, embedding::text AS embedding FROM memories WHERE id = ${id}`,
@@ -595,12 +593,9 @@ export default async function (pi: ExtensionAPI) {
       "Explicitly save a memory. Returns the new memory's id. " +
       "A short summary and the search embedding are generated automatically.",
     approval: "write",
-    parameters: z.object({
-      content: z.string().describe("The memory content to remember"),
-    }),
+    parameters: rememberParams,
     async execute(_id, params) {
-      const { content } = params as { content: string }
-      if (content === undefined) throw new Error("remember requires a 'content' parameter — the memory content goes in 'content'")
+      const { content } = rememberParams.parse(params)
       if (!content.trim()) throw new Error("cannot remember empty text")
       const { id } = await insert("remembered", content)
       return textResult(JSON.stringify({ id }))
@@ -615,11 +610,9 @@ export default async function (pi: ExtensionAPI) {
       "suppressed memory restores it. Suppressed memories are hidden from recollect and automatic " +
       "surfacing unless include_suppressed is set.",
     approval: "write",
-    parameters: z.object({
-      id: z.number().int().describe("Memory id"),
-    }),
+    parameters: idParams,
     async execute(_id, params) {
-      const { id } = params as { id: number }
+      const { id } = idParams.parse(params)
       const [row] = (await db(
         (s) => s`
         UPDATE memories SET suppressed = NOT suppressed WHERE id = ${id} RETURNING id, summary, suppressed`,
