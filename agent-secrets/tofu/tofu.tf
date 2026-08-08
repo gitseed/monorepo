@@ -20,6 +20,10 @@ terraform {
       source  = "Mastercard/restapi"
       version = "2.0.1"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "5.22.0"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"
@@ -56,6 +60,10 @@ provider "infisical" {
 
 provider "openrouter" {
   api_key = data.infisical_secrets.ouroboros.secrets.OPENROUTER_API_KEY.value
+}
+
+provider "cloudflare" {
+  api_token = data.infisical_secrets.ouroboros.secrets.CLOUDFLARE_API_TOKEN.value
 }
 
 provider "restapi" {

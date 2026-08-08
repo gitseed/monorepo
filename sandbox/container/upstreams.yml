@@ -19,3 +19,7 @@
   name: context7
   secret: context7_api_key
   env: CONTEXT7_API_KEY
+- host: api.cloudflare.com
+  name: cloudflare
+  secret: cloudflare_api_token
+  env: CLOUDFLARE_API_TOKEN
