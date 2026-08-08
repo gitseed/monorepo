@@ -50,7 +50,7 @@ resource "cloudflare_api_token" "readonly" {
         { "${local.r2_tofu_bucket}" = "*" }
         ) : jsonencode(
         { "${permission_group_name}.*" = "*" }
-        )
+      )
     }
     if anytrue([for k, _ in permission_group_data : strcontains(lower(k), "read")])
   ]

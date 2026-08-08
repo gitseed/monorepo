@@ -69,7 +69,7 @@ provider "cloudflare" {
 provider "restapi" {
   uri                  = "https://api.github.com"
   write_returns_object = true
-  id_attribute          = "id"
+  id_attribute         = "id"
   headers = {
     Authorization = "Bearer ${data.infisical_secrets.agent.secrets.GITHUB_TOKEN.value}"
     Accept        = "application/vnd.github+json"

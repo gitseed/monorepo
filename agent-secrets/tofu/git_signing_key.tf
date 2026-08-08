@@ -23,8 +23,8 @@ locals {
 }
 
 resource "restapi_object" "github_ssh_signing_key" {
-  path = "/user/ssh_signing_keys"
-  data = local.signing_key_data
+  path                      = "/user/ssh_signing_keys"
+  data                      = local.signing_key_data
   ignore_all_server_changes = true
   force_new                 = [local.signing_key_data]
 }
