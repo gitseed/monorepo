@@ -89,6 +89,7 @@ ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
 # Placeholder so gh adds an Authorization header that the proxy overwrites.
 ENV GITHUB_TOKEN=dummy-replaced-by-proxy
 ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
+ENV CLOUDFLARE_API_TOKEN=dummy-replaced-by-proxy
 
 # No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
