@@ -37,6 +37,10 @@ services {
     }
     stdin_open = true
     tty = true
+    // Placeholders so tools think a credential is present and send an
+    // Authorization header for the proxy to overwrite (omp provider
+    // availability, gh auth).
+    environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
     secrets {
       "git_signing_key"
     }

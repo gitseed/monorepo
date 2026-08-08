@@ -84,12 +84,6 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
 # Bun's fetch ignores the system trust store.
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 
-# Placeholder so omp considers the provider available.
-ENV OPENROUTER_API_KEY=dummy-replaced-by-proxy
-# Placeholder so gh adds an Authorization header that the proxy overwrites.
-ENV GITHUB_TOKEN=dummy-replaced-by-proxy
-ENV FIRECRAWL_API_KEY=dummy-replaced-by-proxy
-
 # No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
 
