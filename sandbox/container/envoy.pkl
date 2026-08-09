@@ -306,7 +306,9 @@ local function awsRoute(svc: Map<String, String>, rgn: String): Dynamic = new Dy
     headers {
       new {
         name = ":authority"
-        string_match { safe_regex { regex = "^" + svc["service"] + "\\." + (if (rgn == "") "" else rgn + "\\.") } }
+        // Exact, not safe_regex: envoy regexes are RE2 full-match, so an
+        // anchored prefix like ^sts\. never matches the full authority.
+        string_match { exact = awsHost(svc["service"], rgn, "amazonaws.com") }
       }
     }
   }

@@ -20,11 +20,18 @@ services {
              "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
     healthcheck {
       // The envoy image has no curl.
-      test = new Listing<String> { "CMD-SHELL"; "bash -c '<dev/tcp/127.0.0.1/443'" }
+      test = new Listing<String> { "CMD-SHELL"; "bash -c '</dev/tcp/127.0.0.1/443'" }
       interval = "1s"
       timeout = "2s"
       retries = 30
       start_period = "1s"
+    }
+    networks {
+      ["default"] {
+        // Static so dnsmasq can answer *.amazonaws.com with it.
+        // SANDBOX_* IPs are allocated per-session by scripts/up.bash.
+        ipv4_address = "${SANDBOX_PROXY_IP}"
+      }
     }
   }
   dnsmasq {
@@ -33,8 +40,27 @@ services {
       context = ".."
       dockerfile = "sandbox/container/dnsmasq.containerfile"
     }
-    // Wildcard all *.amazonaws.com to the proxy container.
-    command = List("--address=/amazonaws.com/proxy")
+    // Wildcard *.amazonaws.com to the proxy; everything else goes to public
+    // resolvers (dnsmasq ignores its own resolv.conf's 127.0.0.11 -- loopback).
+    command = List(
+      "--address=/amazonaws.com/${SANDBOX_PROXY_IP}",
+      "--no-resolv",
+      "--server=1.1.1.1",
+      "--server=8.8.8.8"
+    )
+    healthcheck {
+      test = new Listing<String> { "CMD-SHELL"; "nslookup sts.amazonaws.com 127.0.0.1" }
+      interval = "1s"
+      timeout = "2s"
+      retries = 10
+      start_period = "1s"
+    }
+    networks {
+      ["default"] {
+        // Static so the sandbox's dns: can reference it at create time.
+        ipv4_address = "${SANDBOX_DNSMASQ_IP}"
+      }
+    }
   }
   sandbox {
     image = "sandbox"
@@ -55,9 +81,16 @@ services {
     environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
       + List("AWS_ACCESS_KEY_ID=dummy-replaced-by-proxy",
              "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy")
-    // Route DNS through dnsmasq so *.amazonaws.com resolves to the proxy.
-    // Existing upstreams still resolve via /etc/hosts (Docker links).
-    dns = "dnsmasq"
+    // On a compose network the sandbox keeps Docker's embedded DNS
+    // (127.0.0.11), which serves container names and link aliases itself and
+    // forwards only external queries to this server -- so *.amazonaws.com
+    // reaches dnsmasq (-> proxy) while the links below keep working.
+    dns = "${SANDBOX_DNSMASQ_IP}"
+    depends_on {
+      ["dnsmasq"] {
+        condition = "service_healthy"
+      }
+    }
     secrets {
       "git_signing_key"
     }
@@ -91,6 +124,16 @@ volumes {
   ["memory-socket"] {
     ["external"] = true
     name = "omp-memory-socket"
+  }
+}
+
+networks {
+  ["default"] {
+    ["ipam"] {
+      ["config"] = new Listing {
+        new { ["subnet"] = "${SANDBOX_SUBNET}" }
+      }
+    }
   }
 }
 

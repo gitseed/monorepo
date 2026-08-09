@@ -26,6 +26,28 @@ main() {
 
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
+
+    # Per-session subnet with static IPs for proxy and dnsmasq: the sandbox's
+    # dns: and dnsmasq's --address need literal IPs at container create time.
+    # Probe existing docker networks so concurrent sessions don't collide.
+    pick_subnet() {
+        local used octet
+        used=$(docker network ls -q \
+            | xargs -r docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null) || used=""
+        for octet in $(seq 2 254); do
+            if [[ " $used " != *"10.213.$octet."* ]]; then
+                printf '10.213.%d' "$octet"
+                return 0
+            fi
+        done
+        echo "ERROR: no free 10.213.x.0/24 subnet for the sandbox network" >&2
+        return 1
+    }
+    local net
+    net=$(pick_subnet)
+    export SANDBOX_SUBNET="$net.0/24"
+    export SANDBOX_PROXY_IP="$net.2"     # .1 is the gateway
+    export SANDBOX_DNSMASQ_IP="$net.3"
     MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
     # No secrets needed: postgres is socket-only with trust auth, shared with
     # sandbox sessions via the omp-memory-socket volume.
