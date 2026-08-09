@@ -26,11 +26,6 @@ services {
       retries = 30
       start_period = "1s"
     }
-    networks {
-      sandbox_net {
-        ipv4_address = "10.0.0.10"
-      }
-    }
   }
   dnsmasq {
     image = "dnsmasq"
@@ -38,13 +33,8 @@ services {
       context = ".."
       dockerfile = "sandbox/container/dnsmasq.containerfile"
     }
-    // Wildcard all *.amazonaws.com to the proxy's static IP.
-    command = List("--address=/amazonaws.com/10.0.0.10")
-    networks {
-      sandbox_net {
-        ipv4_address = "10.0.0.53"
-      }
-    }
+    // Wildcard all *.amazonaws.com to the proxy container.
+    command = List("--address=/amazonaws.com/proxy")
   }
   sandbox {
     image = "sandbox"
@@ -67,7 +57,7 @@ services {
              "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy")
     // Route DNS through dnsmasq so *.amazonaws.com resolves to the proxy.
     // Existing upstreams still resolve via /etc/hosts (Docker links).
-    dns = "10.0.0.53"
+    dns = "dnsmasq"
     secrets {
       "git_signing_key"
     }
@@ -85,9 +75,6 @@ services {
     security_opt {
       "no-new-privileges:true"
     }
-    networks {
-      sandbox_net {}
-    }
   }
 }
 
@@ -104,18 +91,6 @@ volumes {
   ["memory-socket"] {
     ["external"] = true
     name = "omp-memory-socket"
-  }
-}
-
-networks {
-  sandbox_net {
-    ipam {
-      config {
-        new {
-          subnet = "10.0.0.0/24"
-        }
-      }
-    }
   }
 }
 
