@@ -18,7 +18,7 @@ locals {
 }
 
 resource "local_file" "regions" {
-  filename        = "${path.module}/../../sigv4/regions.json"
+  filename        = "${path.module}/../regions.json"
   file_permission = "0644"
   content = jsonencode({
     regions = local.regions
