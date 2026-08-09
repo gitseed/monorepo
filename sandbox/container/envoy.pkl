@@ -235,17 +235,21 @@ local awsRequestSigningFilter = new Dynamic {
     ["@type"] = "type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigning"
     service_name = "aws"  // Placeholder; overridden by AwsRequestSigningPerRoute on each route.
     region = "us-east-1"  // Placeholder; overridden by AwsRequestSigningPerRoute on each route.
+    credential_provider {
+      environment_credentials {}
+    }
   }
 }
 
 /// For global endpoints (*.amazonaws.com), the hostname is {service}.amazonaws.com
-/// and the SigV4 region is "aws-global". For regional endpoints, the hostname is
-/// {service}.{region}.{suffix} and the SigV4 region is the actual region.
+/// and the SigV4 region is "us-east-1" (AWS signs global services with us-east-1,
+/// NOT "aws-global"). For regional endpoints, the hostname is
+/// {service}.{region}.amazonaws.com and the SigV4 region is the actual region.
 local function awsHost(svc: String, rgn: String, suffix: String): String =
   if (rgn == "") svc + "." + suffix else svc + "." + rgn + "." + suffix
 
 local function awsSigRegion(rgn: String): String =
-  if (rgn == "") "aws-global" else rgn
+  if (rgn == "") "us-east-1" else rgn
 
 /// One route per AWS service within a regional filter chain.
 /// Each route matches on the Host header and sets the SigV4 service_name + region.
