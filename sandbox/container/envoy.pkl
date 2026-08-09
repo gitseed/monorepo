@@ -28,6 +28,38 @@ local upstreams: List<Upstream> =
       prefix = if (d.hasProperty("prefix")) d.prefix as String else "Bearer "
     })
 
+/// AWS SigV4 services from signing_names.json. 428 services use SigV4;
+/// 1 (codecatalyst) uses bearer auth and is excluded.
+local signingData = (new yaml.Parser {}).parse(read("signing_names.json").text)
+local awsServices: List<Map<String, String>> =
+  signingData.services.toMap()
+    .filter((_, v) -> v != null)
+    .keys
+    .map((k) -> Map("service", k, "signingName", signingData.services.toMap()[k] as String))
+    .toList()
+
+/// 34 standard-partition AWS regions.
+local awsRegions = List(
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+  "ap-south-1", "ap-south-2", "ap-northeast-1", "ap-northeast-2",
+  "ap-northeast-3", "ap-southeast-1", "ap-southeast-2", "ap-southeast-3",
+  "ap-southeast-4", "ap-southeast-5", "ap-east-1",
+  "ca-central-1", "ca-west-1",
+  "eu-central-1", "eu-central-2", "eu-west-1", "eu-west-2", "eu-west-3",
+  "eu-north-1", "eu-south-1", "eu-south-2",
+  "il-central-1",
+  "me-south-1", "me-central-1",
+  "af-south-1",
+  "sa-east-1",
+  "us-gov-east-1", "us-gov-west-1",
+  "cn-north-1", "cn-northwest-1"
+)
+
+/// SNI wildcard patterns for AWS egress. Each generates one filter chain.
+local awsSniPatterns: List<Map<String, String>> = List(
+  Map("wildcard", "*.amazonaws.com", "region", "")
+) + awsRegions.map((r) -> Map("wildcard", "*." + r + ".amazonaws.com", "region", r))
+
 /// One cert covers every chain: it carries a SAN per proxied hostname.
 local downstreamTls = new Dynamic {
   name = "envoy.transport_sockets.tls"
@@ -196,6 +228,139 @@ local function cluster(u: Upstream): Dynamic = new Dynamic {
   }
 }
 
+/// AWS request signing filter (global default, overridden per-route).
+local awsRequestSigningFilter = new Dynamic {
+  name = "envoy.filters.http.aws_request_signing"
+  typed_config {
+    ["@type"] = "type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigning"
+    service_name = "aws"  // Placeholder; overridden by AwsRequestSigningPerRoute on each route.
+    region = "us-east-1"  // Placeholder; overridden by AwsRequestSigningPerRoute on each route.
+  }
+}
+
+/// For global endpoints (*.amazonaws.com), the hostname is {service}.amazonaws.com
+/// and the SigV4 region is "aws-global". For regional endpoints, the hostname is
+/// {service}.{region}.{suffix} and the SigV4 region is the actual region.
+local function awsHost(svc: String, rgn: String, suffix: String): String =
+  if (rgn == "") svc + "." + suffix else svc + "." + rgn + "." + suffix
+
+local function awsSigRegion(rgn: String): String =
+  if (rgn == "") "aws-global" else rgn
+
+/// One route per AWS service within a regional filter chain.
+/// Each route matches on the Host header and sets the SigV4 service_name + region.
+local function awsRoute(svc: Map<String, String>, rgn: String): Dynamic = new Dynamic {
+  match {
+    prefix = "/"
+    headers {
+      new {
+        name = ":authority"
+        string_match { safe_regex { regex = "^" + svc["service"] + "\\." + (if (rgn == "") "" else rgn + "\\.") } }
+      }
+    }
+  }
+  route {
+    cluster = "aws_" + svc["service"] + "_" + awsSigRegion(rgn)
+    host_rewrite_literal = awsHost(svc["service"], rgn, "amazonaws.com")
+    timeout = "0s"
+  }
+  typed_per_filter_config {
+    ["envoy.filters.http.aws_request_signing"] {
+      ["@type"] = "type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigningPerRoute"
+      aws_request_signing {
+        service_name = svc["signingName"]
+        region = awsSigRegion(rgn)
+      }
+      stat_prefix = "aws_" + svc["service"]
+    }
+  }
+}
+
+/// One AWS filter chain per SNI wildcard pattern.
+/// Each chain's HCM has routes for all 428 SigV4 services in that region.
+local function awsFilterChain(sni: Map<String, String>): Dynamic = new Dynamic {
+  filter_chain_match { server_names { sni["wildcard"] } }
+  transport_socket = downstreamTls
+  filters {
+    new {
+      name = "envoy.filters.network.http_connection_manager"
+      typed_config {
+        ["@type"] = "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
+        stat_prefix = "aws_" + sni["wildcard"]
+        route_config {
+          name = "aws_" + sni["wildcard"]
+          virtual_hosts {
+            new {
+              name = "aws"
+              domains { "*" }
+              routes = awsServices.map((svc) -> awsRoute(svc, sni["region"]))
+            }
+          }
+        }
+        access_log { stdoutAccessLog }
+        http_filters {
+          awsRequestSigningFilter
+          routerFilter
+        }
+      }
+    }
+  }
+}
+
+/// One cluster per AWS service per region.
+local function awsCluster(svc: Map<String, String>, rgn: String): Dynamic = new Dynamic {
+  name = "aws_" + svc["service"] + "_" + awsSigRegion(rgn)
+  type = "LOGICAL_DNS"
+  dns_lookup_family = "V4_ONLY"
+  wait_for_warm_on_init = false
+  typed_dns_resolver_config {
+    name = "envoy.network.dns_resolver.getaddrinfo"
+    typed_config {
+      ["@type"] = "type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig"
+      num_retries = 1
+    }
+  }
+  connect_timeout = "2s"
+  load_assignment {
+    cluster_name = "aws_" + svc["service"] + "_" + awsSigRegion(rgn)
+    endpoints {
+      new {
+        lb_endpoints {
+          new {
+            endpoint {
+              address {
+                socket_address {
+                  address = awsHost(svc["service"], rgn, "amazonaws.com")
+                  port_value = 443
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  transport_socket {
+    name = "envoy.transport_sockets.tls"
+    typed_config {
+      ["@type"] = "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
+      sni = awsHost(svc["service"], rgn, "amazonaws.com")
+      common_tls_context {
+        tls_params {
+          ecdh_curves {
+            "X25519"
+            "P-256"
+            "P-384"
+          }
+        }
+        validation_context {
+          trusted_ca { filename = "/etc/ssl/certs/ca-certificates.crt" }
+        }
+      }
+    }
+  }
+}
+
 static_resources {
 secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
   name = u.secret
@@ -221,10 +386,13 @@ secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
         }
       }
       filter_chains = upstreams.map((u) -> filterChain(u))
+        + awsSniPatterns.map((sni) -> awsFilterChain(sni))
     }
   }
 
   clusters = upstreams.map((u) -> cluster(u))
+    + awsSniPatterns.flatMap((sni) ->
+      awsServices.map((svc) -> awsCluster(svc, sni["region"])))
 }
 
 output {

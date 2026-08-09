@@ -24,11 +24,36 @@ resource "tls_private_key" "credentials_proxy_server" {
 
 locals {
   upstreams = yamldecode(file("${path.module}/../../sandbox/container/upstreams.yml"))
+
+  # AWS regions matching the list in sandbox/container/envoy.pkl
+  aws_regions = [
+    "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+    "ap-south-1", "ap-south-2", "ap-northeast-1", "ap-northeast-2",
+    "ap-northeast-3", "ap-southeast-1", "ap-southeast-2", "ap-southeast-3",
+    "ap-southeast-4", "ap-southeast-5", "ap-east-1",
+    "ca-central-1", "ca-west-1",
+    "eu-central-1", "eu-central-2", "eu-west-1", "eu-west-2", "eu-west-3",
+    "eu-north-1", "eu-south-1", "eu-south-2",
+    "il-central-1",
+    "me-south-1", "me-central-1",
+    "af-south-1",
+    "sa-east-1",
+    "us-gov-east-1", "us-gov-west-1",
+    "cn-north-1", "cn-northwest-1",
+  ]
+
+  # Wildcard SANs for AWS egress: 1 global + 34 regional
+  aws_wildcard_sans = ["*.amazonaws.com"] + [
+    for r in local.aws_regions : "*.${r}.amazonaws.com"
+  ]
+
+  # All hostnames for the cert: existing upstreams + AWS wildcards
+  all_dns_names = [for u in local.upstreams : u.host] + local.aws_wildcard_sans
 }
 
 resource "tls_cert_request" "credentials_proxy_server" {
   private_key_pem = tls_private_key.credentials_proxy_server.private_key_pem
-  dns_names       = [for u in local.upstreams : u.host]
+  dns_names       = local.all_dns_names
   subject {
     common_name = local.upstreams[0].host
   }
