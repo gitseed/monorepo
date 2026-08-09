@@ -10,6 +10,7 @@ ADD --checksum=sha256:${PKL_SHA256} --chmod=0755 \
 COPY container/envoy.pkl /envoy.pkl
 COPY container/upstreams.yml /upstreams.yml
 COPY sigv4/signing_names.json /signing_names.json
+COPY sigv4/regions.json /regions.json
 RUN /usr/local/bin/pkl eval --format yaml /envoy.pkl --output-path /envoy.yaml
 
 FROM docker.io/envoyproxy/envoy:v1.39-latest

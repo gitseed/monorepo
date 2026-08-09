@@ -5,3 +5,4 @@
 !container/envoy.pkl
 !container/upstreams.yml
 !sigv4/signing_names.json
+!sigv4/regions.json
