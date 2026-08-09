@@ -19,7 +19,6 @@ resource "aws_iam_access_key" "credentials_proxy" {
 resource "infisical_secret" "aws_access_key_id" {
   name             = "AWS_ACCESS_KEY_ID"
   value            = aws_iam_access_key.credentials_proxy.id
-  value_wo_version = 1
   env_slug         = infisical_project_environment.global.slug
   workspace_id     = infisical_project.agent.id
   folder_path      = "/"
