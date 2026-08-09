@@ -28,6 +28,7 @@ services {
     }
   }
   dnsmasq {
+    image = "dnsmasq"
     build {
       context = ".."
       dockerfile = "sandbox/container/dnsmasq.containerfile"
