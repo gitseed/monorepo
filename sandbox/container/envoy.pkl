@@ -252,7 +252,7 @@ local awsDynamicCluster = new Dynamic {
   name = "aws_dynamic_forward_proxy"
   connect_timeout = "2s"
   lb_policy = "CLUSTER_PROVIDED"
-  cluster_discovery_type {
+  cluster_type {
     name = "envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig"
     typed_config {
       ["@type"] = "type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig"
