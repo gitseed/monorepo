@@ -21,6 +21,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         fzf \
         hexyl \
         yq \
+        aws-cli \
         emacs-nox \
     && dnf clean all
 
