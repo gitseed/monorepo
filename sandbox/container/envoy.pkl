@@ -224,7 +224,7 @@ local awsRequestSigningFilter = new Dynamic {
     service_name = "aws"  // Placeholder; overridden by AwsRequestSigningPerRoute on each route.
     region = "us-east-1"  // Placeholder; overridden by AwsRequestSigningPerRoute on each route.
     credential_provider {
-      environment_credentials {}
+      environment_credential_provider {}
     }
   }
 }
