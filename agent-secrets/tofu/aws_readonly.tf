@@ -21,7 +21,7 @@ resource "infisical_secret" "aws_access_key_id" {
   value            = aws_iam_access_key.credentials_proxy.id
   value_wo_version = 1
   env_slug         = infisical_project_environment.global.slug
-  workspace_id     = infisical_project.ouroboros.id
+  workspace_id     = infisical_project.agent.id
   folder_path      = "/"
 }
 
@@ -32,6 +32,6 @@ resource "infisical_secret" "aws_secret_access_key" {
   value_wo         = aws_iam_access_key.credentials_proxy.secret
   value_wo_version = 1
   env_slug         = infisical_project_environment.global.slug
-  workspace_id     = infisical_project.ouroboros.id
+  workspace_id     = infisical_project.agent.id
   folder_path      = "/"
 }
