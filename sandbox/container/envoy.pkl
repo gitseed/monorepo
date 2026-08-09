@@ -239,6 +239,10 @@ local function awsHost(svc: String, rgn: String, suffix: String): String =
 local function awsSigRegion(rgn: String): String =
   if (rgn == "") "us-east-1" else rgn
 
+/// Cluster name suffix: "global" for the global filter chain, otherwise the region.
+local function awsClusterRegion(rgn: String): String =
+  if (rgn == "") "global" else rgn
+
 /// One route per AWS service within a regional filter chain.
 /// Each route matches on the Host header and sets the SigV4 service_name + region.
 local function awsRoute(svc: Map<String, String>, rgn: String): Dynamic = new Dynamic {
@@ -252,7 +256,7 @@ local function awsRoute(svc: Map<String, String>, rgn: String): Dynamic = new Dy
     }
   }
   route {
-    cluster = "aws_" + svc["service"] + "_" + awsSigRegion(rgn)
+    cluster = "aws_" + svc["service"] + "_" + awsClusterRegion(rgn)
     host_rewrite_literal = awsHost(svc["service"], rgn, "amazonaws.com")
     timeout = "0s"
   }
@@ -301,7 +305,7 @@ local function awsFilterChain(sni: Map<String, String>): Dynamic = new Dynamic {
 
 /// One cluster per AWS service per region.
 local function awsCluster(svc: Map<String, String>, rgn: String): Dynamic = new Dynamic {
-  name = "aws_" + svc["service"] + "_" + awsSigRegion(rgn)
+  name = "aws_" + svc["service"] + "_" + awsClusterRegion(rgn)
   type = "LOGICAL_DNS"
   dns_lookup_family = "V4_ONLY"
   wait_for_warm_on_init = false
@@ -314,7 +318,7 @@ local function awsCluster(svc: Map<String, String>, rgn: String): Dynamic = new 
   }
   connect_timeout = "2s"
   load_assignment {
-    cluster_name = "aws_" + svc["service"] + "_" + awsSigRegion(rgn)
+    cluster_name = "aws_" + svc["service"] + "_" + awsClusterRegion(rgn)
     endpoints {
       new {
         lb_endpoints {
