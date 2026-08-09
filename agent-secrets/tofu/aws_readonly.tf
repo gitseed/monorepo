@@ -17,11 +17,11 @@ resource "aws_iam_access_key" "credentials_proxy" {
 }
 
 resource "infisical_secret" "aws_access_key_id" {
-  name             = "AWS_ACCESS_KEY_ID"
-  value            = aws_iam_access_key.credentials_proxy.id
-  env_slug         = infisical_project_environment.global.slug
-  workspace_id     = infisical_project.agent.id
-  folder_path      = "/"
+  name         = "AWS_ACCESS_KEY_ID"
+  value        = aws_iam_access_key.credentials_proxy.id
+  env_slug     = infisical_project_environment.global.slug
+  workspace_id = infisical_project.agent.id
+  folder_path  = "/"
 }
 
 # Secret access key is write-only in Infisical (value_wo) so it is never
