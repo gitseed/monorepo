@@ -250,7 +250,6 @@ local dynamicForwardProxyFilter = new Dynamic {
 /// against the resolved hostname and sets SNI automatically.
 local awsDynamicCluster = new Dynamic {
   name = "aws_dynamic_forward_proxy"
-  type = "HTTP"
   connect_timeout = "2s"
   lb_policy = "CLUSTER_PROVIDED"
   cluster_discovery_type {
