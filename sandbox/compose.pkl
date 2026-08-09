@@ -28,7 +28,7 @@ services {
     }
   }
   dnsmasq {
-    image = "dnsmasq"
+    image = "docker.io/dnsmasq/dnsmasq:latest"
     build {
       context = ".."
       dockerfile = "sandbox/container/dnsmasq.containerfile"
