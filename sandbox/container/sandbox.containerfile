@@ -21,6 +21,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         fzf \
         hexyl \
         yq \
+        awscli2 \
         emacs-nox \
     && dnf clean all
 
