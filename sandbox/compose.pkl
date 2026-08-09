@@ -40,8 +40,12 @@ services {
     tty = true
     // Placeholders so tools think a credential is present and send an
     // Authorization header for the proxy to overwrite (omp provider
-    // availability, gh auth).
+    // availability, gh auth). AWS credentials are not in upstreams.yml
+    // (the proxy signs via aws_request_signing), but the aws CLI needs
+    // dummy values to send requests through the proxy.
     environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
+      + List("AWS_ACCESS_KEY_ID=dummy-replaced-by-proxy",
+             "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy")
     secrets {
       "git_signing_key"
     }
