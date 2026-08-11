@@ -47,12 +47,6 @@ services {
       retries = 10
       start_period = "1s"
     }
-    networks {
-      ["default"] {
-        // Static so the sandbox's dns: can reference it at create time.
-        ipv4_address = "${SANDBOX_DNSMASQ_IP}"
-      }
-    }
   }
   sandbox {
     image = "sandbox"
@@ -73,7 +67,8 @@ services {
     // (127.0.0.11), which serves container names and link aliases itself
     // and forwards only external queries to this server -- so the links
     // below keep working while all external DNS flows through dnsmasq.
-    dns = "${SANDBOX_DNSMASQ_IP}"
+    // DNSMASQ_IP is discovered from the running container by scripts/up.bash.
+    dns = "${DNSMASQ_IP}"
     depends_on {
       ["dnsmasq"] {
         condition = "service_healthy"
@@ -112,16 +107,6 @@ volumes {
   ["memory-socket"] {
     ["external"] = true
     name = "omp-memory-socket"
-  }
-}
-
-networks {
-  ["default"] {
-    ["ipam"] {
-      ["config"] = new Listing {
-        new { ["subnet"] = "${SANDBOX_SUBNET}" }
-      }
-    }
   }
 }
 
