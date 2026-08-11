@@ -1,3 +1,4 @@
 /signing_names.json
 /tofu/terraform.tfstate
 /tofu/terraform.tfstate.backup
+/regions.json
