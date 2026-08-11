@@ -9,6 +9,10 @@ terraform {
       source  = "hashicorp/local"
       version = "2.9.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "6.56.0"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"
@@ -24,4 +28,8 @@ terraform {
     skip_s3_checksum            = true
     use_path_style              = true
   }
+}
+
+provider "aws" {
+  region = "us-east-1"
 }
