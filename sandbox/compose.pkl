@@ -12,8 +12,8 @@ services {
   proxy {
     image = "credentials-proxy"
     build {
-      context = ".."
-      dockerfile = "sandbox/container/proxy.containerfile"
+      context = "."
+      dockerfile = "container/proxy.containerfile"
     }
     environment = rawUpstreams.map((u) -> u.env as String)
       + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY",
