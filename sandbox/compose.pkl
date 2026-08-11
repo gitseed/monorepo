@@ -12,11 +12,12 @@ services {
   proxy {
     image = "credentials-proxy"
     build {
-      context = "./container"
-      dockerfile = "proxy.containerfile"
+      context = ".."
+      dockerfile = "sandbox/container/proxy.containerfile"
     }
     environment = rawUpstreams.map((u) -> u.env as String)
-      + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY")
+      + List("CREDENTIALS_PROXY_SERVER_CERT", "CREDENTIALS_PROXY_SERVER_KEY",
+             "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
     healthcheck {
       // The envoy image has no curl.
       test = new Listing<String> { "CMD-SHELL"; "bash -c '</dev/tcp/127.0.0.1/443'" }

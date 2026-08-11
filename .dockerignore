@@ -1,0 +1,8 @@
+# Exclude everything, then whitelist only what the proxy build needs.
+# The proxy build context is the repo root (see sandbox/compose.pkl).
+*
+# Expose only the files the proxy.containerfile COPYs.
+!sandbox/container/envoy.pkl
+!sandbox/container/upstreams.yml
+!sigv4/signing_names.json
+!sigv4/regions.json
