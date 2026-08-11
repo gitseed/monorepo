@@ -26,11 +26,12 @@ main() {
 
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
-    # Rendered into compose config (sandbox dns:); the real value is
-    # discovered once dnsmasq is up. Exported empty up front so compose
-    # invocations before then (builds, service ups) don't warn about an
-    # unset variable.
+    # Rendered into compose config (sandbox dns:, dnsmasq --address); the
+    # real values are discovered once each container is up. Exported empty
+    # up front so compose invocations before then (builds, service ups)
+    # don't warn about unset variables.
     export DNSMASQ_IP=
+    export PROXY_IP=
 
     MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
     # No secrets needed: postgres is socket-only with trust auth, shared with
@@ -97,6 +98,12 @@ main() {
 
     echo "starting credentials proxy..."
     infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" up -d --wait proxy
+
+    # dnsmasq's --address=/amazonaws.com/... interpolates the proxy's IP
+    # into its command at compose-invocation time, so discover it first.
+    PROXY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+        "$(compose -p "$PROJECT" ps -q proxy)")
+    export PROXY_IP
 
     echo "starting dnsmasq..."
     compose -p "$PROJECT" up -d --wait dnsmasq
