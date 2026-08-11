@@ -104,7 +104,7 @@ main() {
     # Docker's own IPAM gives each project network a collision-free subnet,
     # so discover the address it assigned instead of reserving one up front.
     DNSMASQ_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
-        "$(compose ps -q dnsmasq)")
+        "$(compose -p "$PROJECT" ps -q dnsmasq)")
     export DNSMASQ_IP
 
     if [[ $# -eq 0 ]]; then
