@@ -21,6 +21,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         fzf \
         hexyl \
         yq \
+        awscli2 \
         emacs-nox \
     && dnf clean all
 
@@ -83,6 +84,10 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
 
 # Bun's fetch ignores the system trust store.
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
+
+# So do the aws CLI and boto3 (bundled CA file); point them at the extracted
+# system bundle, which includes the local CA.
+ENV AWS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
 
 # No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
