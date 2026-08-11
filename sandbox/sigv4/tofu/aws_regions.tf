@@ -1,5 +1,5 @@
 # Fetch all available AWS regions from the current account and write them
-# to sigv4/regions.json. The envoy.pkl config generator and the TLS cert
+# to sandbox/sigv4/regions.json. The envoy.pkl config generator and the TLS cert
 # both read this file at build time. Mainland China regions (cn-north-1,
 # cn-northwest-1) are excluded — they require a separate account and
 # connectivity that we don't have.
