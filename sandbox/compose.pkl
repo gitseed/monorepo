@@ -32,14 +32,12 @@ services {
       context = "./container"
       dockerfile = "dnsmasq.containerfile"
     }
-    // Per-session DNS chokepoint for the sandbox. --no-resolv: the
-    // container's resolv.conf points at Docker's embedded DNS, which
-    // would loop.
-    command = List(
-      "--no-resolv",
-      "--server=1.1.1.1",
-      "--server=8.8.8.8"
-    )
+    // No upstream flags: dnsmasq reads the container's resolv.conf —
+    // 127.0.0.11, Docker's embedded DNS — so external lookups inherit the
+    // host's resolver chain (VPN zones, hosts overrides) instead of
+    // hardcoding public servers. The embedded DNS forwards queries from
+    // dnsmasq itself to the daemon defaults, not back to dnsmasq (dnsmasq
+    // has no dns: set), so the chain can't loop.
     healthcheck {
       test = new Listing<String> { "CMD-SHELL"; "nslookup sts.amazonaws.com 127.0.0.1" }
       interval = "1s"
