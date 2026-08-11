@@ -133,7 +133,7 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
                 new {
                   match { prefix = "/" }
                   route {
-                    cluster = u.name
+                    cluster = "forward_proxy"
                     host_rewrite_literal = u.host
                     // stream_idle_timeout still reaps hung connections.
                     timeout = "0s"
@@ -146,70 +146,8 @@ local function filterChain(u: Upstream): Dynamic = new Dynamic {
         access_log { stdoutAccessLog }
         http_filters {
           credentialInjector(u)
+          dynamicForwardProxyFilter
           routerFilter
-        }
-      }
-    }
-  }
-}
-
-/// Strongly validate certificates.
-local function cluster(u: Upstream): Dynamic = new Dynamic {
-  name = u.name
-  type = "LOGICAL_DNS"
-  dns_lookup_family = "V4_ONLY"
-  wait_for_warm_on_init = false
-  typed_dns_resolver_config {
-    name = "envoy.network.dns_resolver.getaddrinfo"
-    typed_config {
-      ["@type"] = "type.googleapis.com/envoy.extensions.network.dns_resolver.getaddrinfo.v3.GetAddrInfoDnsResolverConfig"
-      num_retries = 1
-    }
-  }
-  connect_timeout = "2s"
-  load_assignment {
-    cluster_name = u.name
-    endpoints {
-      new {
-        lb_endpoints {
-          new {
-            endpoint {
-              address {
-                socket_address {
-                  address = u.host
-                  port_value = 443
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  transport_socket {
-    name = "envoy.transport_sockets.tls"
-    typed_config {
-      ["@type"] = "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
-      sni = u.host
-      common_tls_context {
-        // Envoy's default curve list (X25519, P-256) rejects P-384 ECDSA
-        // certs on TLS 1.2 upstreams (BoringSSL BAD_ECC_CERT) — context7's
-        // AWS ELB is exactly that combination.
-        tls_params {
-          ecdh_curves {
-            "X25519"
-            "P-256"
-            "P-384"
-          }
-        }
-        validation_context {
-          trusted_ca { filename = "/etc/ssl/certs/ca-certificates.crt" }
-          match_typed_subject_alt_names {
-            new {
-              san_type = "DNS"
-              matcher { exact = u.host }
-            }
-          }
         }
       }
     }
@@ -229,27 +167,27 @@ local awsRequestSigningFilter = new Dynamic {
   }
 }
 
-/// Dynamic forward proxy filter: resolves DNS lazily per-request
-/// instead of eagerly for ~15K static clusters at init.
-/// Shares the same dns_cache_config as awsDynamicCluster.
+/// Dynamic forward proxy filter: resolves DNS lazily per-request.
+/// Every chain runs it; shares its dns_cache with forwardProxyCluster.
 local dynamicForwardProxyFilter = new Dynamic {
   name = "envoy.filters.http.dynamic_forward_proxy"
   typed_config {
     ["@type"] = "type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig"
     dns_cache_config {
-      name = "aws_dns_cache"
+      name = "dns_cache"
       dns_lookup_family = "V4_ONLY"
     }
   }
 }
 
-/// One dynamic forward proxy cluster for all AWS egress.
-/// DNS is resolved lazily per-request, eliminating the ~15K
+/// The single egress cluster: every chain routes through it. DNS is
+/// resolved lazily per-request, so nothing is resolved at init no matter
+/// how many hostnames the config covers — this replaced ~15K static
 /// LOGICAL_DNS clusters that flooded the resolver at init.
-/// TLS SAN validation is automatic: Envoy verifies the cert
-/// against the resolved hostname and sets SNI automatically.
-local awsDynamicCluster = new Dynamic {
-  name = "aws_dynamic_forward_proxy"
+/// TLS SAN validation is automatic: Envoy verifies the cert against the
+/// resolved hostname and sets SNI automatically.
+local forwardProxyCluster = new Dynamic {
+  name = "forward_proxy"
   connect_timeout = "2s"
   lb_policy = "CLUSTER_PROVIDED"
   cluster_type {
@@ -257,7 +195,7 @@ local awsDynamicCluster = new Dynamic {
     typed_config {
       ["@type"] = "type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig"
       dns_cache_config {
-        name = "aws_dns_cache"
+        name = "dns_cache"
         dns_lookup_family = "V4_ONLY"
       }
     }
@@ -269,7 +207,7 @@ local awsDynamicCluster = new Dynamic {
       common_tls_context {
         // Envoy's default curve list (X25519, P-256) rejects P-384 ECDSA
         // certs on TLS 1.2 upstreams (BoringSSL BAD_ECC_CERT) — AWS ELBs
-        // are exactly that combination.
+        // and context7's ELB are exactly that combination.
         tls_params {
           ecdh_curves {
             "X25519"
@@ -313,7 +251,7 @@ local function awsRoute(svc: Map<String, String>, rgn: String): Dynamic = new Dy
     }
   }
   route {
-    cluster = "aws_dynamic_forward_proxy"
+    cluster = "forward_proxy"
     host_rewrite_literal = awsHost(svc["service"], rgn, "amazonaws.com")
     timeout = "0s"
   }
@@ -390,7 +328,7 @@ secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
     }
   }
 
-  clusters = upstreams.map((u) -> cluster(u)) + List(awsDynamicCluster)
+  clusters = List(forwardProxyCluster)
 }
 
 output {
