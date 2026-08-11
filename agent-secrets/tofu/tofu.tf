@@ -24,6 +24,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "5.22.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "6.56.0"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"
@@ -56,6 +60,10 @@ provider "infisical" {
     aws_iam = {
     }
   }
+}
+
+provider "aws" {
+  region = "us-east-2"
 }
 
 provider "openrouter" {
