@@ -1,0 +1,11 @@
+# The proxy build context is sandbox/ (see compose.pkl): exclude
+# everything, then whitelist only what proxy.containerfile COPYs.
+*
+!container/envoy.pkl
+!container/upstreams.yml
+!sigv4/signing_names.json
+!sigv4/regions.json
+# Belt and braces: these can never ship, even if the whitelist above
+# grows careless. Placed last so nothing can re-include them.
+sigv4/tofu/.terraform
+sigv4/tofu/terraform.tfstate*
