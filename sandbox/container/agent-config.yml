@@ -1,7 +1,7 @@
 eval:
   py: false
 modelRoles:
-  default: openrouter/z-ai/glm-5.2:high
+  default: qwen/qwen3.8-max:high
   smol: openrouter/deepseek/deepseek-v4-flash-0731
 symbolPreset: nerd
 hideThinkingBlock: true
