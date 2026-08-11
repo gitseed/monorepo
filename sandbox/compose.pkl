@@ -26,6 +26,34 @@ services {
       start_period = "1s"
     }
   }
+  dnsmasq {
+    image = "dnsmasq"
+    build {
+      context = "./container"
+      dockerfile = "dnsmasq.containerfile"
+    }
+    // Per-session DNS chokepoint for the sandbox. --no-resolv: the
+    // container's resolv.conf points at Docker's embedded DNS, which
+    // would loop.
+    command = List(
+      "--no-resolv",
+      "--server=1.1.1.1",
+      "--server=8.8.8.8"
+    )
+    healthcheck {
+      test = new Listing<String> { "CMD-SHELL"; "nslookup sts.amazonaws.com 127.0.0.1" }
+      interval = "1s"
+      timeout = "2s"
+      retries = 10
+      start_period = "1s"
+    }
+    networks {
+      ["default"] {
+        // Static so the sandbox's dns: can reference it at create time.
+        ipv4_address = "${SANDBOX_DNSMASQ_IP}"
+      }
+    }
+  }
   sandbox {
     image = "sandbox"
     build {
@@ -41,6 +69,16 @@ services {
     // Authorization header for the proxy to overwrite (omp provider
     // availability, gh auth).
     environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
+    // On a compose network the sandbox keeps Docker's embedded DNS
+    // (127.0.0.11), which serves container names and link aliases itself
+    // and forwards only external queries to this server -- so the links
+    // below keep working while all external DNS flows through dnsmasq.
+    dns = "${SANDBOX_DNSMASQ_IP}"
+    depends_on {
+      ["dnsmasq"] {
+        condition = "service_healthy"
+      }
+    }
     secrets {
       "git_signing_key"
     }
@@ -74,6 +112,16 @@ volumes {
   ["memory-socket"] {
     ["external"] = true
     name = "omp-memory-socket"
+  }
+}
+
+networks {
+  ["default"] {
+    ["ipam"] {
+      ["config"] = new Listing {
+        new { ["subnet"] = "${SANDBOX_SUBNET}" }
+      }
+    }
   }
 }
 
