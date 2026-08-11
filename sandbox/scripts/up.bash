@@ -26,6 +26,11 @@ main() {
 
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
+    # Rendered into compose config (sandbox dns:); the real value is
+    # discovered once dnsmasq is up. Exported empty up front so compose
+    # invocations before then (builds, service ups) don't warn about an
+    # unset variable.
+    export DNSMASQ_IP=
 
     MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
     # No secrets needed: postgres is socket-only with trust auth, shared with
