@@ -26,6 +26,12 @@ main() {
 
     PROJECT=sandbox-$$
     export GIT_PROJECT_DIR
+    # Rendered into compose config (sandbox dns:); the real value is
+    # discovered once dnsmasq is up. Exported empty up front so compose
+    # invocations before then (builds, service ups) don't warn about an
+    # unset variable.
+    export DNSMASQ_IP=
+
     MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
     # No secrets needed: postgres is socket-only with trust auth, shared with
     # sandbox sessions via the omp-memory-socket volume.
@@ -91,6 +97,15 @@ main() {
 
     echo "starting credentials proxy..."
     infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" up -d --wait proxy
+
+    echo "starting dnsmasq..."
+    compose -p "$PROJECT" up -d --wait dnsmasq
+    # The sandbox's dns: needs a literal IP at container-create time.
+    # Docker's own IPAM gives each project network a collision-free subnet,
+    # so discover the address it assigned instead of reserving one up front.
+    DNSMASQ_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+        "$(compose -p "$PROJECT" ps -q dnsmasq)")
+    export DNSMASQ_IP
 
     if [[ $# -eq 0 ]]; then
         set -- omp
