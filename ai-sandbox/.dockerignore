@@ -1,4 +1,4 @@
-# The proxy build context is sandbox/ (see compose.pkl): exclude
+# The proxy build context is ai-sandbox/ (see compose.pkl): exclude
 # everything, then whitelist only what proxy.containerfile COPYs.
 *
 !container/envoy.pkl

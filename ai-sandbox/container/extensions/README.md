@@ -1,4 +1,4 @@
-# OMP Sandbox Extensions
+# OMP AI Sandbox Extensions
 
 Custom [oh-my-pi](https://omp.sh/) extensions loaded into the sandboxed agent. Each extension lives in its own folder; the `.ts` entry point stays at the top level so omp's flat extension scanner picks it up.
 

@@ -49,11 +49,11 @@ services {
       start_period = "1s"
     }
   }
-  sandbox {
-    image = "sandbox"
+  ["ai-sandbox"] {
+    image = "ai-sandbox"
     build {
       context = "./container"
-      dockerfile = "sandbox.containerfile"
+      dockerfile = "ai-sandbox.containerfile"
       secrets {
         "ca_cert"
       }
