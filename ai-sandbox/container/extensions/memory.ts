@@ -424,7 +424,7 @@ export default async function (pi: ExtensionAPI) {
     return new Text(theme.fg("muted", lines.join("\n")), 0, 0)
   })
 
-  const { z } = pi.zod
+  const type = pi.arktype
 
   /** Map DB rows to the recollect/recall JSON shape and prime the
    *  summary cache so a follow-up recall renders with its summary. */
@@ -442,36 +442,29 @@ export default async function (pi: ExtensionAPI) {
     return memories
   }
 
-  // Schemas are .strict() and re-parsed in execute: pi passes params through
-  // unvalidated, and default Zod parsing strips unknown keys, so a misnamed
-  // parameter would silently degrade to a no-filter browse instead of
-  // erroring back to the model.
-  const recollectParams = z
-    .object({
-      query: z
-        .string()
-        .optional()
-        .describe("Text to match memories against (embedding similarity); omit to browse recent explicitly-remembered memories"),
-      type: z
-        .enum(["heard", "said", "thought", "remembered", "any"])
-        .optional()
-        .describe("Only memories of this kind (default any)"),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(config.recollect.maxCount)
-        .optional()
-        .describe(`Maximum memories to return (default ${config.recollect.defaultCount})`),
-      min_date: z.string().optional().describe("ISO timestamp; only memories created at or after"),
-      max_date: z.string().optional().describe("ISO timestamp; only memories created at or before"),
-      min_text_length: z.number().int().optional().describe("Only memories at least this many chars long"),
-      max_text_length: z.number().int().optional().describe("Only memories at most this many chars long"),
-      include_suppressed: z.boolean().optional().describe("Also search suppressed memories (default false)"),
-      min_similarity: z.number().optional().describe("Cosine similarity floor, -1..1 (default none)"),
-      max_similarity: z.number().optional().describe("Cosine similarity ceiling, -1..1 (default none)"),
-    })
-    .strict()
+  // Objects are closed ("+": "reject") and re-asserted in execute: pi passes
+  // params through unvalidated here, so a misnamed parameter must error back
+  // to the model instead of silently degrading to a no-filter browse.
+  const recollectParams = type({
+    "query?": type("string").describe(
+      "Text to match memories against (embedding similarity); omit to browse recent explicitly-remembered memories",
+    ),
+    "type?": type
+      .enumerated(...KINDS, "any")
+      .describe("Only memories of this kind (default any)"),
+    "limit?": type("number.integer")
+      .atLeast(1)
+      .atMost(config.recollect.maxCount)
+      .describe(`Maximum memories to return (default ${config.recollect.defaultCount})`),
+    "min_date?": type("string").describe("ISO timestamp; only memories created at or after"),
+    "max_date?": type("string").describe("ISO timestamp; only memories created at or before"),
+    "min_text_length?": type("number.integer").describe("Only memories at least this many chars long"),
+    "max_text_length?": type("number.integer").describe("Only memories at most this many chars long"),
+    "include_suppressed?": type("boolean").describe("Also search suppressed memories (default false)"),
+    "min_similarity?": type("number").describe("Cosine similarity floor, -1..1 (default none)"),
+    "max_similarity?": type("number").describe("Cosine similarity ceiling, -1..1 (default none)"),
+    "+": "reject",
+  })
 
   pi.registerTool({
     name: "recollect",
@@ -484,7 +477,7 @@ export default async function (pi: ExtensionAPI) {
     approval: "read",
     parameters: recollectParams,
     async execute(_id, params) {
-      const p = recollectParams.parse(params)
+      const p = recollectParams.assert(params)
       const limit = Math.min(p.limit ?? config.recollect.defaultCount, config.recollect.maxCount)
 
       // No query: browse the most recent memories, defaulting to
@@ -550,8 +543,11 @@ export default async function (pi: ExtensionAPI) {
     },
   })
 
-  const idParams = z.object({ id: z.number().int().describe("Memory id") }).strict()
-  const rememberParams = z.object({ content: z.string().describe("The memory content to remember") }).strict()
+  const idParams = type({ id: type("number.integer").describe("Memory id"), "+": "reject" })
+  const rememberParams = type({
+    content: type("string").describe("The memory content to remember"),
+    "+": "reject",
+  })
 
   pi.registerTool({
     name: "recall",
@@ -560,7 +556,7 @@ export default async function (pi: ExtensionAPI) {
     approval: "read",
     parameters: idParams,
     async execute(_id, params) {
-      const { id } = idParams.parse(params)
+      const { id } = idParams.assert(params)
       const [row] = (await db(
         (s) => s`
         SELECT content, summary, embedding::text AS embedding FROM memories WHERE id = ${id}`,
@@ -580,7 +576,7 @@ export default async function (pi: ExtensionAPI) {
       return textResult(related ? `${row.content}\n\n${related}` : row.content)
     },
     renderCall(args, _options, theme) {
-      const { id } = args as { id: number }
+      const { id } = args
       const summary = summaryById.get(id)
       return new Text(theme.fg("muted", summary ? `recall(${summary})` : `recall(#${id})`), 0, 0)
     },
@@ -595,7 +591,7 @@ export default async function (pi: ExtensionAPI) {
     approval: "write",
     parameters: rememberParams,
     async execute(_id, params) {
-      const { content } = rememberParams.parse(params)
+      const { content } = rememberParams.assert(params)
       if (!content.trim()) throw new Error("cannot remember empty text")
       const { id } = await insert("remembered", content)
       return textResult(JSON.stringify({ id }))
@@ -612,7 +608,7 @@ export default async function (pi: ExtensionAPI) {
     approval: "write",
     parameters: idParams,
     async execute(_id, params) {
-      const { id } = idParams.parse(params)
+      const { id } = idParams.assert(params)
       const [row] = (await db(
         (s) => s`
         UPDATE memories SET suppressed = NOT suppressed WHERE id = ${id} RETURNING id, summary, suppressed`,
@@ -626,7 +622,7 @@ export default async function (pi: ExtensionAPI) {
       return textResult(`${row.suppressed ? "suppressed" : "unsuppressed"} memory ${id}`)
     },
     renderCall(args, _options, theme) {
-      const { id } = args as { id: number }
+      const { id } = args
       const summary = summaryById.get(id)
       return new Text(theme.fg("muted", summary ? `suppress(${summary})` : `suppress(#${id})`), 0, 0)
     },
