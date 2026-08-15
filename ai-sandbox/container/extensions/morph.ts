@@ -18,7 +18,15 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 const MAX_FILE_BYTES = 70_000
 
 export default function (pi: ExtensionAPI) {
-  const { z } = pi.zod
+  const type = pi.arktype
+
+  // Standalone const: registerTool only narrows execute params when the
+  // schema is a resolved type, not an inline generic call.
+  const editParams = type({
+    path: type("string").describe("Path to the file to edit"),
+    instruction: type("string").describe("First-person description of what you're changing"),
+    update: type("string").describe("Partial edit: only changed code with `// ... existing code ...` markers"),
+  })
 
   pi.registerTool({
     name: "edit",
@@ -46,14 +54,8 @@ export default function (pi: ExtensionAPI) {
       "Prefer this tool for config files (YAML/TOML/JSON), large structural",
       "edits, or multi-region changes where line-anchoring is fragile.",
     ].join("\n"),
-    parameters: z.object({
-      path: z.string().describe("Path to the file to edit"),
-      instruction: z.string().describe("First-person description of what you're changing"),
-      update: z.string().describe("Partial edit: only changed code with `// ... existing code ...` markers"),
-    }),
-    async execute(_toolCallId, _params, signal, onUpdate, ctx) {
-      // Static<TParams> doesn't narrow for Zod schemas (library limitation).
-      const params = _params as { path: string; instruction: string; update: string }
+    parameters: editParams,
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const filePath = isAbsolute(params.path)
         ? params.path
         : resolve(ctx.cwd, params.path)

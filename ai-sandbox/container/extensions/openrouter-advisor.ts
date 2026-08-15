@@ -88,7 +88,15 @@ export default function (pi: ExtensionAPI) {
 
   pi.logger?.info(`[advisor] loaded ${configs.length} tool(s): ${configs.map((c) => c.name).join(", ")}`);
 
-  const { z } = pi.zod;
+  const type = pi.arktype;
+
+  // Identical across advisors; built once as a standalone const so
+  // registerTool's TParams inference resolves the execute param type.
+  const advisorParams = type({
+    prompt: type("string").describe(
+      "What you need advice on. Describe the decision, problem, or verification you need help with.",
+    ),
+  });
 
   for (const cfg of configs) {
     pi.logger?.info(
@@ -100,11 +108,7 @@ export default function (pi: ExtensionAPI) {
       name: cfg.name,
       label: cfg.label,
       description: cfg.description,
-      parameters: z.object({
-        prompt: z
-          .string()
-          .describe("What you need advice on. Describe the decision, problem, or verification you need help with."),
-      }),
+      parameters: advisorParams,
       async execute(
         _toolCallId: string,
         params: { prompt: string },
