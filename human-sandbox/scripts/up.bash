@@ -3,9 +3,10 @@
 # human-sandbox/scripts/up.bash emacs -nw     # explicit command
 #
 # A working environment is an AWS profile: each profile in ~/.aws/config
-# carries an infisical_machine_identity_id key (and optionally an
-# infisical_project_id), and the profile's AWS account maps to its own
-# infisical org + project. Select the environment with AWS_PROFILE; its
+# carries an infisical_machine_identity_id key, and the profile's AWS
+# account maps to its own infisical org. Within that org the secrets come
+# from the "ouroboros" infisical project (human admin credentials),
+# resolved by slug at runtime. Select the environment with AWS_PROFILE; its
 # secrets are exposed directly into the sandbox (no credentials proxy —
 # the occupant is a trusted human).
 set -euo pipefail
@@ -83,12 +84,19 @@ main() {
     INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id)
     INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent)
     export INFISICAL_TOKEN
-    # Machine identity auth doesn't fall back to .infisical.json for the
-    # project. Each profile may carry its own infisical_project_id for its
-    # org; otherwise fall back to the repo's .infisical.json.
-    INFISICAL_PROJECT_ID=$(aws configure get infisical_project_id)
+    # This sandbox pulls from the "ouroboros" project (ai-sandbox pulls from
+    # "agent"). Resolved by slug within the logged-in org: slugs are fixed by
+    # tofu (ouroboros/tofu, agent-secrets/tofu) and stable across orgs, so
+    # no project IDs are stored anywhere. The machine identity token is
+    # accepted by GET /api/v1/projects.
+    INFISICAL_PROJECT_ID=$(
+        curl -fsS -H "Authorization: Bearer $INFISICAL_TOKEN" \
+            "${INFISICAL_DOMAIN:-https://app.infisical.com}/api/v1/projects" \
+        | jq -r --arg slug ouroboros '.projects[] | select(.slug == $slug) | .id'
+    )
     if [[ -z $INFISICAL_PROJECT_ID ]]; then
-        INFISICAL_PROJECT_ID=$(jq -r .workspaceId .infisical.json)
+        echo "ERROR: no infisical project with slug 'ouroboros' visible to this machine identity" >&2
+        exit 1
     fi
     export INFISICAL_PROJECT_ID
 

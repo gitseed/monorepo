@@ -4,12 +4,7 @@ Sandboxed working environments in [orbstack](https://orbstack.dev/) for humans. 
 
 ## Working environments
 
-An environment is an AWS profile. Each profile in `~/.aws/config` carries:
-
-- `infisical_machine_identity_id` — machine identity for that account's infisical org (same key `ai-sandbox/scripts/up.bash` reads)
-- `infisical_project_id` — infisical project in that org; when unset, falls back to the repo's `.infisical.json`
-
-The profile's AWS account connects to its own infisical org + project, so switching `AWS_PROFILE` switches which secrets populate the sandbox.
+An environment is an AWS profile. Each profile in `~/.aws/config` carries an `infisical_machine_identity_id` (same key `ai-sandbox/scripts/up.bash` reads); the profile's AWS account maps to its own infisical org. Within the logged-in org, `up.bash` resolves this sandbox's project by slug — `ouroboros`, the human admin credentials project, where the agent sandbox uses `agent` instead — via `GET /api/v1/projects`, so no project IDs are stored anywhere. `INFISICAL_DOMAIN` overrides the API host (default `https://app.infisical.com`).
 
 ## Usage
 
