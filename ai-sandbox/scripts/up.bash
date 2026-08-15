@@ -97,8 +97,27 @@ main() {
     INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id)
     INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent)
     export INFISICAL_TOKEN
-    # Machine identity auth doesn't fall back to .infisical.json for the project.
-    INFISICAL_PROJECT_ID=$(jq -r .workspaceId .infisical.json)
+    # The infisical project comes from the AWS profile too, same as the
+    # machine identity. Resolved by slug within the logged-in org: slugs are
+    # fixed by tofu (ouroboros/tofu, agent-secrets/tofu) and stable across
+    # orgs, so no project IDs are stored anywhere. The machine identity token
+    # is accepted by GET /api/v1/projects.
+    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_ai_project_slug)
+    if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
+        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_ai_project_slug key." >&2
+        echo "       Set it to the project to pull from, e.g.:" >&2
+        echo "       aws configure set infisical_ai_project_slug agent" >&2
+        exit 1
+    fi
+    INFISICAL_PROJECT_ID=$(
+        curl -fsS -H "Authorization: Bearer $INFISICAL_TOKEN" \
+            "${INFISICAL_DOMAIN:-https://app.infisical.com}/api/v1/projects" \
+        | jq -r --arg slug "$INFISICAL_PROJECT_SLUG" '.projects[] | select(.slug == $slug) | .id'
+    )
+    if [[ -z $INFISICAL_PROJECT_ID ]]; then
+        echo "ERROR: no infisical project with slug '$INFISICAL_PROJECT_SLUG' visible to this machine identity" >&2
+        exit 1
+    fi
     export INFISICAL_PROJECT_ID
 
     if built_recently ai-sandbox; then
