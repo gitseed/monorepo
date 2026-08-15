@@ -1,0 +1,48 @@
+/// Rendered to compose config by scripts/up.bash via process substitution.
+/// The env-var passthrough list lives in container/envs.yml.
+module compose
+
+import "pkl:yaml"
+
+local rawEnvs =
+  ((new yaml.Parser {}).parse(read("container/envs.yml").text) as Listing<String>).toList()
+
+services {
+  ["human-sandbox"] {
+    image = "human-sandbox"
+    build {
+      context = "./container"
+      dockerfile = "human-sandbox.containerfile"
+    }
+    stdin_open = true
+    tty = true
+    // Bare names: compose copies each variable from its own environment,
+    // which up.bash populates with real values via infisical run. The
+    // sandbox occupant is a trusted human, so no credentials proxy and no
+    // dummy placeholders — secrets are exposed directly.
+    environment = rawEnvs
+    secrets {
+      "git_signing_key"
+    }
+    volumes {
+      "${GIT_PROJECT_DIR:-..}:/workspace"
+    }
+    cap_drop {
+      "NET_RAW"
+      "NET_ADMIN"
+    }
+    security_opt {
+      "no-new-privileges:true"
+    }
+  }
+}
+
+secrets {
+  git_signing_key {
+    environment = "GIT_SIGNING_KEY"
+  }
+}
+
+output {
+  renderer = new YamlRenderer {}
+}

@@ -1,0 +1,14 @@
+# Environment variables passed through from infisical into the sandbox
+# verbatim. up.bash runs docker compose under `infisical run`, which
+# populates these with real values; unlike ai-sandbox there is no proxy to
+# substitute them — the sandbox occupant is a trusted human. The set mirrors
+# ai-sandbox/container/upstreams.yml plus the AWS keys that its proxy used
+# for request signing.
+- OPENROUTER_API_KEY
+- GITHUB_TOKEN
+- GITHUB_TOKEN_BASIC
+- FIRECRAWL_API_KEY
+- CONTEXT7_API_KEY
+- CLOUDFLARE_API_TOKEN
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
