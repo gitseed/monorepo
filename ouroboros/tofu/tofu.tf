@@ -52,9 +52,16 @@ provider "cloudflare" {
 
 provider "http" {}
 
+# Same profile-aware lookup that up.bash does.
+ephemeral "local_command" "infisical_machine_identity_id" {
+  command   = "aws"
+  arguments = ["configure", "get", "infisical_machine_identity_id"]
+}
+
 provider "infisical" {
   auth = {
     aws_iam = {
+      identity_id = trimspace(ephemeral.local_command.infisical_machine_identity_id.stdout)
     }
   }
 }
