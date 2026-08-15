@@ -1,6 +1,6 @@
 #!/bin/bash
-# sandbox/scripts/up.sh      # interactive omp
-# sandbox/scripts/up.sh bash # plain shell instead
+# ai-sandbox/scripts/up.sh      # interactive omp
+# ai-sandbox/scripts/up.sh bash # plain shell instead
 set -euo pipefail
 
 # Everything lives inside main() so bash parses the whole file before running
@@ -15,25 +15,25 @@ main() {
     # Render once so a pkl failure exits loudly under set -e, then feed each
     # compose call via process substitution -- no rendered file on disk.
     # --project-directory makes relative build.context paths resolve from
-    # sandbox/, not /dev/fd/. Exported for the infisical-spawned subshells.
-    COMPOSE_CONFIG=$(pkl eval --format yaml sandbox/compose.pkl)
+    # ai-sandbox/, not /dev/fd/. Exported for the infisical-spawned subshells.
+    COMPOSE_CONFIG=$(pkl eval --format yaml ai-sandbox/compose.pkl)
     export COMPOSE_CONFIG
     compose() {
-        docker compose --project-directory sandbox \
+        docker compose --project-directory ai-sandbox \
             -f <(printf '%s\n' "$COMPOSE_CONFIG") "$@"
     }
     export -f compose
 
-    PROJECT=sandbox-$$
+    PROJECT=ai-sandbox-$$
     export GIT_PROJECT_DIR
-    # Rendered into compose config (sandbox dns:, dnsmasq --address); the
+    # Rendered into compose config (ai-sandbox dns:, dnsmasq --address); the
     # real values are discovered once each container is up. Exported empty
     # up front so compose invocations before then (builds, service ups)
     # don't warn about unset variables.
     export DNSMASQ_IP=
     export PROXY_IP=
 
-    MEMORY_COMPOSE=(docker compose -f sandbox/memory.compose.yml)
+    MEMORY_COMPOSE=(docker compose -f ai-sandbox/memory.compose.yml)
     # No secrets needed: postgres is socket-only with trust auth, shared with
     # sandbox sessions via the omp-memory-socket volume.
     echo "starting agent memory service..."
@@ -54,7 +54,7 @@ main() {
             echo "WARNING: could not enumerate containers; leaving memory service running" >&2
             return $status
         fi
-        if printf '%s\n' "$projects" | grep -q '^sandbox-[0-9][0-9]*$'; then
+        if printf '%s\n' "$projects" | grep -q '^ai-sandbox-[0-9][0-9]*$'; then
             return $status   # another session is still active
         fi
         "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
@@ -101,10 +101,10 @@ main() {
     INFISICAL_PROJECT_ID=$(jq -r .workspaceId .infisical.json)
     export INFISICAL_PROJECT_ID
 
-    if built_recently sandbox; then
-        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build sandbox
+    if built_recently ai-sandbox; then
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build ai-sandbox
     else
-        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build --pull --no-cache sandbox
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build --pull --no-cache ai-sandbox
     fi
 
     echo "starting credentials proxy..."
@@ -131,9 +131,9 @@ main() {
 
     # The run must also be under infisical so envs are populated
     if [[ -t 0 && -t 1 ]]; then
-        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm sandbox "$@"
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm ai-sandbox "$@"
     else
-        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T sandbox "$@"
+        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T ai-sandbox "$@"
     fi
 }
 

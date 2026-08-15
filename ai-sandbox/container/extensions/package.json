@@ -1,7 +1,7 @@
 {
   "name": "omp-extensions",
   "private": true,
-  "description": "Type checking infrastructure for OMP sandbox extensions",
+  "description": "Type checking infrastructure for OMP ai-sandbox extensions",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
