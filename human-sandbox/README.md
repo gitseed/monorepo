@@ -4,11 +4,11 @@ Sandboxed working environments in [orbstack](https://orbstack.dev/) for humans. 
 
 ## Working environments
 
-An environment is an AWS profile. Each profile in `~/.aws/config` carries an `infisical_machine_identity_id` (same key `ai-sandbox/scripts/up.bash` reads); the profile's AWS account maps to its own infisical org. The profile also names the infisical project to pull from via `infisical_project_slug` — `ouroboros` for human admin credentials (the agent sandbox instead pulls from the `agent` project, via the repo-root `.infisical.json` binding). `up.bash` resolves the slug to a project ID within the logged-in org via `GET /api/v1/projects`, so no project IDs are stored anywhere. `INFISICAL_DOMAIN` overrides the API host (default `https://app.infisical.com`).
+An environment is an AWS profile. Each profile in `~/.aws/config` carries an `infisical_machine_identity_id` (same key `ai-sandbox/scripts/up.bash` reads); the profile's AWS account maps to its own infisical org. The profile also names the infisical project to pull from via `infisical_human_project_slug` — `ouroboros` for human admin credentials (the agent sandbox reads its own project from `infisical_ai_project_slug`). `up.bash` resolves the slug to a project ID within the logged-in org via `GET /api/v1/projects`, so no project IDs are stored anywhere. `INFISICAL_DOMAIN` overrides the API host (default `https://app.infisical.com`).
 
 ```console
 $ aws configure set infisical_machine_identity_id <id>
-$ aws configure set infisical_project_slug ouroboros
+$ aws configure set infisical_human_project_slug ouroboros
 ```
 
 ## Usage

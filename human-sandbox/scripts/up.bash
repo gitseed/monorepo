@@ -5,8 +5,9 @@
 # A working environment is an AWS profile: each profile in ~/.aws/config
 # carries an infisical_machine_identity_id key, and the profile's AWS
 # account maps to its own infisical org. The profile also names which
-# infisical project to pull from via infisical_project_slug (e.g.
-# "ouroboros" for human admin credentials), resolved to an ID at runtime.
+# infisical project to pull from via infisical_human_project_slug (e.g.
+# "ouroboros" for human admin credentials; ai-sandbox reads its own
+# project from infisical_ai_project_slug), resolved to an ID at runtime.
 # Select the environment with AWS_PROFILE; its secrets are exposed directly
 # into the sandbox (no credentials proxy — the occupant is a trusted human).
 set -euo pipefail
@@ -89,11 +90,11 @@ main() {
     # fixed by tofu (ouroboros/tofu, agent-secrets/tofu) and stable across
     # orgs, so no project IDs are stored anywhere. The machine identity token
     # is accepted by GET /api/v1/projects.
-    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_project_slug)
+    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_human_project_slug)
     if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
-        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_project_slug key." >&2
+        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_human_project_slug key." >&2
         echo "       Set it to the project to pull from, e.g.:" >&2
-        echo "       aws configure set infisical_project_slug ouroboros" >&2
+        echo "       aws configure set infisical_human_project_slug ouroboros" >&2
         exit 1
     fi
     INFISICAL_PROJECT_ID=$(
