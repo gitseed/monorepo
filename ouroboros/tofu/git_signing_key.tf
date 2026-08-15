@@ -6,13 +6,15 @@ resource "infisical_secret" "git_signing_key" {
   name         = "GIT_SIGNING_KEY"
   value        = tls_private_key.git_signing.private_key_openssh
   env_slug     = infisical_project_environment.global.slug
-  workspace_id = infisical_project.agent.id
+  workspace_id = infisical_project.ouroboros.id
   folder_path  = "/"
 }
 
+# The GitHub Terraform provider has no ssh_signing_key resource,
+# so use the REST API directly via Mastercard/restapi.
 locals {
   signing_key_data = jsonencode({
-    title = "gitseed-agent sandbox signing key"
+    title = "ouroboros signing key"
     key   = tls_private_key.git_signing.public_key_openssh
   })
 }

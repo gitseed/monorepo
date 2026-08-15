@@ -20,6 +20,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "5.22.0"
     }
+    local = {
+      source  = "hashicorp/local"
+      version = "2.9.0"
+    }
     aws = {
       source  = "hashicorp/aws"
       version = "6.56.0"
@@ -51,9 +55,16 @@ data "infisical_secrets" "ouroboros" {
   folder_path  = "/"
 }
 
+# Same profile-aware lookup that up.bash does.
+ephemeral "local_command" "infisical_machine_identity_id" {
+  command   = "aws"
+  arguments = ["configure", "get", "infisical_machine_identity_id"]
+}
+
 provider "infisical" {
   auth = {
     aws_iam = {
+      identity_id = trimspace(ephemeral.local_command.infisical_machine_identity_id.stdout)
     }
   }
 }
