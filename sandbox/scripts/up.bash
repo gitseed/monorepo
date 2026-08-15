@@ -90,6 +90,17 @@ main() {
         compose -p "$PROJECT" build --pull --no-cache proxy
     fi
 
+    # Infisical auth derives from the AWS profile: each profile in ~/.aws/config
+    # carries an infisical_machine_identity_id key, and aws-iam login exchanges
+    # the SSO session for a token. INFISICAL_TOKEN makes every infisical run
+    # below ignore whatever org the stored `infisical login` session selected.
+    INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id)
+    INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent)
+    export INFISICAL_TOKEN
+    # Machine identity auth doesn't fall back to .infisical.json for the project.
+    INFISICAL_PROJECT_ID=$(jq -r .workspaceId .infisical.json)
+    export INFISICAL_PROJECT_ID
+
     if built_recently sandbox; then
         infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" build sandbox
     else
