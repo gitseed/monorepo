@@ -19,6 +19,6 @@ $ AWS_PROFILE=work human-sandbox/scripts/up.bash     # the 'work' environment
 $ AWS_PROFILE=work human-sandbox/scripts/up.bash emacs -nw
 ```
 
-The monorepo is mounted at `/workspace`; git commit signing is set up from the `GIT_SIGNING_KEY` secret (mounted as a compose secret, never written to the image). Sessions are ephemeral like ai-sandbox: the container is destroyed on exit (`run --rm` + compose down), and the image rebuilds at least every 12 hours.
+The monorepo is mounted at `/workspace`. Git identity and https push credentials come from `GITHUB_TOKEN` (gh's credential helper); SSH commit signing is set up when `GIT_SIGNING_KEY` is present in the project — both plain environment passthroughs. Sessions are ephemeral like ai-sandbox: the container is destroyed on exit (`run --rm` + compose down), and the image rebuilds at least every 12 hours.
 
-Secrets live only in the container's environment and tmpfs secret mounts — never on disk.
+Secrets live only in the container's environment — never on host disk.

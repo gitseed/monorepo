@@ -21,9 +21,6 @@ services {
     // sandbox occupant is a trusted human, so no credentials proxy and no
     // dummy placeholders — secrets are exposed directly.
     environment = rawEnvs
-    secrets {
-      "git_signing_key"
-    }
     volumes {
       "${GIT_PROJECT_DIR:-..}:/workspace"
     }
@@ -34,12 +31,6 @@ services {
     security_opt {
       "no-new-privileges:true"
     }
-  }
-}
-
-secrets {
-  git_signing_key {
-    environment = "GIT_SIGNING_KEY"
   }
 }
 
