@@ -1,0 +1,13 @@
+# Profile patch layer, applied after the dsh-base and dsh-web-app bundle
+# layers. An id-targeted entry replaces the row's whole config, so
+# unchanged fields from the bundle layer are restated.
+#
+# The base composition defaults new agents to deepseek-official, which
+# has no credential inside the sandbox; point the deployment default at
+# the pi-ai OpenRouter route instead (the catalog pi-ai installs covers
+# qwen/qwen3.8-max).
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: openrouter
+    model: qwen/qwen3.8-max

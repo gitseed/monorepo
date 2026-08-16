@@ -1,0 +1,7 @@
+# Mirrors the pnpm settings dsh's own profile initializer writes; only
+# matters once out-of-tree plugins are installed into this profile.
+packages:
+  - .
+
+nodeLinker: hoisted
+autoInstallPeers: false

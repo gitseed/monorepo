@@ -1,0 +1,9 @@
+# Read by dsh-settings-file from $DSH_HOME/settings.yaml (hot-reloaded).
+# The llm-pi-ai section mounts the generic multi-provider adapter's
+# OpenRouter route: endpoint, protocol, and the model catalog come from
+# pi-ai's installed registry; the credential reference resolves to the
+# dummy env var the credentials proxy replaces mid-flight.
+llm-pi-ai:
+  providers:
+    openrouter:
+      apiKeyEnv: OPENROUTER_API_KEY
