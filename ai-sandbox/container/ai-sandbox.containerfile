@@ -25,44 +25,33 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         emacs-nox \
     && dnf clean all
 
-# Deno — pinned. dsh's engines nominally name Node, but Deno's node
-# compatibility covers the APIs dsh needs (node:module.stripTypeScriptTypes,
-# node:vm, node:sqlite, worker_threads all probed present in 2.9.5). Bun,
-# which this image used to run, fails hard: even the latest 1.3.14 lacks
-# node:module.stripTypeScriptTypes, so dsh's plugin tree never loads.
-ARG DENO_VERSION=2.9.5
-ARG DENO_SHA256=6b7cae3a8fc4385a59dea3146fcb8bad7fea4230e0ad36a8c692afacbc254be0
-RUN curl -fsSL "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-aarch64-unknown-linux-gnu.zip" \
-        -o /tmp/deno.zip \
-    && echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum --check \
-    && unzip -o /tmp/deno.zip -d /usr/local/bin \
-    && chmod 0755 /usr/local/bin/deno \
-    && ln -s /usr/local/bin/deno /usr/local/bin/node \
-    && rm -f /tmp/deno.zip
+# Node — pinned; dsh's engines require ^22.19.0 || >=24.0.0. The other
+# candidates both fail: bun (even unreleased master) has no
+# node:module.stripTypeScriptTypes, which dsh's code-runtime imports
+# at module scope, and deno 2.9.5 deadlocks mid npm install
+# (denoland/deno#36599).
+ARG NODE_VERSION=22.23.2
+ARG NODE_SHA256=fff4078c5def658577f92c88db7db3bc0072924bfb93fe52c1e744a54e94abb8
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" \
+        -o /tmp/node.tar.xz \
+    && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum --check \
+    && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
+    && rm -f /tmp/node.tar.xz
 
-# DeepSeek Harness — developer preview, version pinned in
-# dsh/host-package.json; upstream promises compatibility-breaking
-# changes, re-baseline deliberately.
-#
-# Installed as a local npm project, not a global bin: dsh's native
-# modules (node-pty, Node-API) load only with a local node_modules.
+# DeepSeek Harness — developer preview, so pinned; upstream promises
+# compatibility-breaking changes, re-baseline deliberately.
 #
 # gcc, g++, make, and python3 are the build-time floor for the install:
-# node-pty ships no linux prebuilds, so its install script falls back
-# to node-gyp and compiles. The node symlink above (deno in node mode,
-# detected via argv[0]) fields the bare `node` that node-gyp and the
-# lifecycle scripts spawn. CI=true keeps deno install non-interactive.
+# dsh's native modules (node-pty) ship no linux prebuilds, so npm
+# falls back to node-gyp and compiles them.
+ARG DSH_VERSION=0.1.0-rc.6
 RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         gcc \
         gcc-c++ \
         make \
         python3 \
     && dnf clean all
-RUN deno install -g npm:node-gyp \
-    && ln -sf /root/.deno/bin/node-gyp /usr/local/bin/node-gyp
-COPY dsh/host-package.json /opt/dsh/package.json
-RUN cd /opt/dsh && CI=true deno install
-COPY --chmod=0755 dsh/dsh /usr/local/bin/dsh
+RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION}
 
 # pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
@@ -75,8 +64,8 @@ RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
     cp /ca.pem /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem \
     && update-ca-trust extract
 
-# Kept for any tool that honors it; deno itself takes the proxy CA via
-# --ca in the dsh wrapper (its TLS stack does not read the OS store).
+# Node honors NODE_EXTRA_CA_CERTS; the credentials proxy intercepts
+# TLS with a local CA, so every upstream needs it in trust.
 ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 
 # So do the aws CLI and boto3 (bundled CA file); point them at the extracted
