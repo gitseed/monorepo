@@ -37,16 +37,6 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
-# sd — intuitive sed replacement (not in Fedora repos).
-ARG SD_VERSION=1.1.0
-ARG SD_SHA256=ec8c93c0533ff21f4851d11566808d4082544baf063d9b96ea77c27e98b7cd99
-RUN curl -fsSL -o /tmp/sd.tar.gz \
-        "https://github.com/chmln/sd/releases/download/v${SD_VERSION}/sd-v${SD_VERSION}-aarch64-unknown-linux-musl.tar.gz" \
-    && echo "${SD_SHA256}  /tmp/sd.tar.gz" | sha256sum --check \
-    && tar -xzf /tmp/sd.tar.gz -C /tmp \
-    && install -m 0755 /tmp/sd-v${SD_VERSION}-aarch64-unknown-linux-musl/sd /usr/local/bin/sd \
-    && rm -rf /tmp/sd*
-
 # pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
 ARG PKL_SHA256=a76d2dd47da435a8f911b0347373f47c7e59ea54fb75ff846d20b8df10dba058
