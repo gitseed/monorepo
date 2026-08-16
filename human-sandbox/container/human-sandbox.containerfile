@@ -20,6 +20,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         eza \
         fzf \
         hexyl \
+        jq \
         yq \
         awscli2 \
         emacs-nox \

@@ -21,6 +21,6 @@ $ AWS_PROFILE=work human-sandbox/scripts/up.bash emacs -nw
 
 The monorepo is mounted at `/workspace`. Git identity and https push credentials come from `GITHUB_TOKEN` (gh's credential helper); SSH commit signing is set up when `GIT_SIGNING_KEY` is present in the project — both plain environment passthroughs. Sessions are ephemeral like ai-sandbox: the container is destroyed on exit (`run --rm` + compose down), and the image rebuilds at least every 12 hours.
 
-The host's `~/.aws` is mounted read-only at `/root/.aws`, so the AWS profiles (including the `cloudflare` profile that tofu's s3 state backend uses) work inside unchanged. `tofu` is installed and `TF_DATA_DIR` is `.sandbox_tofu`: provider downloads stay separate from the host's `.terraform` (darwin binaries the container can't run) and persist across sessions on the mounted workspace.
+The sandbox stays isolated to its environment: no host `~/.aws` inside. Instead the entrypoint derives the aws `cloudflare` profile that tofu's s3 state backend needs from the project's `CLOUDFLARE_API_TOKEN` (R2 S3 creds are the token id and the sha256 of its value, per the [cloudflare docs](https://developers.cloudflare.com/r2/api/tokens/#get-s3-api-credentials-from-an-api-token)), pinned to the right account by `CLOUDFLARE_ACCOUNT_ID`. `tofu` is installed and `TF_DATA_DIR` is `.sandbox_tofu`: provider downloads stay separate from the host's `.terraform` (darwin binaries the container can't run) and persist across sessions on the mounted workspace.
 
-Secrets flow one way — into the container's environment, or read-only from the host. Nothing writes credentials back to host disk.
+Secrets flow one way — into the container's environment. Nothing writes credentials back to host disk.

@@ -1,13 +1,61 @@
 #!/bin/bash
-# Entrypoint: set up git identity, https push credentials, and SSH commit
-# signing before handing off to the main process. Everything keys off
-# GITHUB_TOKEN being present in the environment (human sandboxes expose
-# secrets directly); without it the sandbox still starts, just without
-# git setup. Unlike ai-sandbox there is no proxy injecting anything.
+# Entrypoint: set up git identity, https push credentials, SSH commit
+# signing, and the aws "cloudflare" profile before handing off to the main
+# process. Each block keys off its own env var being present (human
+# sandboxes expose secrets directly); missing secrets skip the block, not
+# fail the start. Unlike ai-sandbox there is no proxy injecting anything.
 
 set -euo pipefail
 
-main() {
+# AWS config for tofu's s3-on-R2 state backend (profile "cloudflare" in any
+# tofu.tf). R2 S3-compatible creds are *derived* from the Cloudflare API
+# token, not supplied separately:
+#   Access Key ID     = token id (from /user/tokens/verify)
+#   Secret Access Key = SHA-256 of the token value
+# Source: https://developers.cloudflare.com/r2/api/tokens/
+#         #get-s3-api-credentials-from-an-api-token
+aws_config() {
+    [[ -n ${CLOUDFLARE_API_TOKEN:-} ]] || return 0
+
+    local api=https://api.cloudflare.com/client/v4
+    local token_id account_id
+    token_id=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+        "$api/user/tokens/verify" | jq -er '.result.id')
+
+    # The account that owns the state buckets. Tokens often see several
+    # accounts, so take it from the project's CLOUDFLARE_ACCOUNT_ID; only
+    # fall back to the sole visible account.
+    local accounts
+    accounts=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/accounts")
+    if [[ -n ${CLOUDFLARE_ACCOUNT_ID:-} ]]; then
+        account_id=$(jq -er --arg id "$CLOUDFLARE_ACCOUNT_ID" \
+            '.result[] | select(.id == $id) | .id' <<< "$accounts") \
+            || { echo "entrypoint: CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID not visible to this token" >&2; return 1; }
+    else
+        account_id=$(jq -er 'if (.result | length) == 1 then .result[0].id else empty end' <<< "$accounts") \
+            || { echo "entrypoint: token sees multiple cloudflare accounts; add CLOUDFLARE_ACCOUNT_ID to the infisical project" >&2; return 1; }
+    fi
+
+    local aws_dir="$HOME/.aws"
+    mkdir -p "$aws_dir"
+    chmod 700 "$aws_dir"
+
+    # Same shape as the aws config the ouroboros tofu once generated, minus
+    # the SSO profile: only what the state backend needs.
+    cat > "$aws_dir/config" <<EOF
+[profile cloudflare]
+aws_access_key_id=${token_id}
+aws_secret_access_key=$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)
+services = cloudflare
+
+[services cloudflare]
+s3 =
+  endpoint_url = https://${account_id}.r2.cloudflarestorage.com
+EOF
+    chmod 600 "$aws_dir/config"
+}
+
+git_config() {
     # No token — skip git setup entirely.
     [[ -n ${GITHUB_TOKEN:-} ]] || return 0
 
@@ -48,6 +96,11 @@ main() {
     pubkey=$(ssh-keygen -y -f "$key_file")
     echo "$git_email $pubkey" > "$signers_file"
     chmod 600 "$signers_file"
+}
+
+main() {
+    aws_config
+    git_config
 }
 
 main "$@"

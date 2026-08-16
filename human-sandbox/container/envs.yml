@@ -6,5 +6,11 @@
 # (openrouter/firecrawl/context7), no proxy artifacts (GITHUB_TOKEN_BASIC).
 # Anything absent from the project simply arrives unset.
 - GITHUB_TOKEN
+# The entrypoint derives the R2 state-backend credentials from this token
+# (access key id = token id, secret = sha256 of the value) and writes the
+# aws "cloudflare" profile — no separate R2 keys in the project.
 - CLOUDFLARE_API_TOKEN
+# Tokens often see several cloudflare accounts; this pins the one that owns
+# the state buckets (not a secret — tofu keeps it in the project too).
+- CLOUDFLARE_ACCOUNT_ID
 - GIT_SIGNING_KEY

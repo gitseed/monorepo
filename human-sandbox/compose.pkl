@@ -23,11 +23,6 @@ services {
     environment = rawEnvs
     volumes {
       "${GIT_PROJECT_DIR:-..}:/workspace"
-      // The host's aws config, read-only: the profiles carry the sandbox's
-      // infisical binding (up.bash reads it before starting) and the
-      // credentials tofu's s3 state backend uses (profile "cloudflare").
-      // Read-only so nothing inside can rewrite host credentials.
-      "${HOME}/.aws:/root/.aws:ro"
     }
     cap_drop {
       "NET_RAW"
