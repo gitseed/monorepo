@@ -20,9 +20,17 @@ terraform {
       source  = "hashicorp/local"
       version = "2.9.0"
     }
+    restapi = {
+      source  = "Mastercard/restapi"
+      version = "2.0.1"
+    }
     time = {
       source  = "hashicorp/time"
       version = "0.14.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "4.1.0"
     }
   }
   backend "s3" {
@@ -52,13 +60,32 @@ provider "cloudflare" {
 
 provider "http" {}
 
+# Same profile-aware lookup that up.bash does.
+ephemeral "local_command" "infisical_machine_identity_id" {
+  command   = "aws"
+  arguments = ["configure", "get", "infisical_machine_identity_id"]
+}
+
 provider "infisical" {
   auth = {
     aws_iam = {
+      identity_id = trimspace(ephemeral.local_command.infisical_machine_identity_id.stdout)
     }
   }
 }
 
 provider "local" {}
 
+provider "restapi" {
+  uri                  = "https://api.github.com"
+  write_returns_object = true
+  id_attribute         = "id"
+  headers = {
+    Authorization = "Bearer ${data.infisical_secrets.ouroboros.secrets.GITHUB_TOKEN.value}"
+    Accept        = "application/vnd.github+json"
+  }
+}
+
 provider "time" {}
+
+provider "tls" {}
