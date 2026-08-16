@@ -204,14 +204,17 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		vpHeight := msg.Height - m.ta.Height() - 3
+		// A pty can report zero size before its first real resize; a
+		// negative height panics the viewport.
+		vpHeight := max(msg.Height-m.ta.Height()-3, 1)
+		vpWidth := max(msg.Width, 1)
 		if !m.ready {
-			m.vp = viewport.New(msg.Width, vpHeight)
+			m.vp = viewport.New(vpWidth, vpHeight)
 			m.ready = true
 		} else {
-			m.vp.Width, m.vp.Height = msg.Width, vpHeight
+			m.vp.Width, m.vp.Height = vpWidth, vpHeight
 		}
-		m.ta.SetWidth(msg.Width - 2)
+		m.ta.SetWidth(max(msg.Width-2, 1))
 		m.refresh()
 		return m, nil
 
