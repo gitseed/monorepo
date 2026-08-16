@@ -40,7 +40,17 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
 # compatibility-breaking changes, re-baseline deliberately. The bin's
 # node shebang lands on the bun symlink above — intentional: whether
 # dsh works on bun is part of the spike.
+#
+# gcc, g++, make, and python3 are the build-time floor for that install:
+# dsh's native modules (node-pty) ship no linux-arm64 prebuild, so bun
+# falls back to node-gyp and compiles them.
 ARG DSH_VERSION=0.1.0-rc.6
+RUN dnf --assumeyes --setopt=install_weak_deps=False install \
+        gcc \
+        gcc-c++ \
+        make \
+        python3 \
+    && dnf clean all
 RUN bun add -g @deepseek-ai/dsh@${DSH_VERSION} \
     && ln -sf /root/.bun/bin/dsh /usr/local/bin/dsh
 
