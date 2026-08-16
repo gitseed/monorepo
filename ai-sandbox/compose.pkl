@@ -54,19 +54,27 @@ services {
     build {
       context = "./container"
       dockerfile = "ai-sandbox.containerfile"
+      additional_contexts = List("dsh-tui-src=../dsh-tui")
       secrets {
         "ca_cert"
       }
     }
     stdin_open = true
     tty = true
-    // The bind (0.0.0.0:3080) comes from the profile patch layer
+    // Default is the terminal UI (dsh-tui, driving the SDK jsonrpc runtime
+    // against container/dsh/tui.cordis.yml). The Web UI is still wired:
+    // `up.bash dsh web` overrides the command, and the port stays published.
+    // Its bind (0.0.0.0:3080) comes from the profile patch layer
     // (container/dsh/cordis.patch.yml), not flags: the webserver schema
     // accepts only 127.0.0.1 or 0.0.0.0, loopback is unreachable through
     // the published port, and --host refuses 0.0.0.0 while the config
     // layer supports it. The browser-trust fence accepts loopback Host
     // headers natively, so no --trusted-host is needed.
-    command = List("dsh", "web")
+    command = List("dsh-tui",
+      "-cordis", "/root/.dsh/tui.cordis.yml",
+      "-model", "qwen/qwen3.8-max",
+      "-workspace", "/workspace",
+      "-session-root", "/root/.dsh/sessions")
     ports = List("127.0.0.1:3080:3080")
     // Placeholders so tools think a credential is present and send an
     // Authorization header for the proxy to overwrite (dsh's OpenRouter
@@ -80,6 +88,10 @@ services {
              // default ask-approval policy would stall an unattended
              // session.
              "DSH_PERMISSION_MODE=danger-full-access",
+             // tui.cordis.yml's dsh-llm-deepseek adapter reads its host
+             // endpoint from this; the proxy front for openrouter.ai
+             // injects the real credential in flight.
+             "DEEPSEEK_BASE_URL=https://openrouter.ai/api/v1",
              // Never export session logs off-box (telemetry is default-
              // off upstream; this pins it).
              "DSH_TELEMETRY_DISABLED=1")

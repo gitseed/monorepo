@@ -1,6 +1,7 @@
 #!/bin/bash
-# ai-sandbox/scripts/up.bash      # DeepSeek Harness Web UI
-# ai-sandbox/scripts/up.bash bash # plain shell instead
+# ai-sandbox/scripts/up.bash         # DeepSeek Harness TUI (dsh-tui)
+# ai-sandbox/scripts/up.bash dsh web # Web UI on http://127.0.0.1:3080 instead
+# ai-sandbox/scripts/up.bash bash    # plain shell instead
 set -euo pipefail
 
 # Everything lives inside main() so bash parses the whole file before running
@@ -148,7 +149,7 @@ main() {
         "$(compose -p "$PROJECT" ps -q dnsmasq)")
     export DNSMASQ_IP
 
-    echo "DeepSeek Harness Web UI: http://127.0.0.1:3080 (Ctrl-C tears the session down)"
+    echo "DeepSeek Harness TUI starting (Web UI instead: up.bash dsh web, then http://127.0.0.1:3080)"
     # --service-ports publishes the Web UI on host loopback. Args
     # override the service command (e.g. bash for a debug shell); the
     # run must also be under infisical so envs are populated.

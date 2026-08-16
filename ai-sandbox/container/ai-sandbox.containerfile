@@ -1,5 +1,12 @@
 # syntax=docker/dockerfile:1
 
+# dsh-tui — Go TUI frontend for dsh's SDK jsonrpc runtime. Source comes in
+# through the dsh-tui-src additional build context (compose.pkl).
+FROM docker.io/library/golang:1.26 AS dsh-tui-build
+WORKDIR /src
+COPY --from=dsh-tui-src . .
+RUN CGO_ENABLED=0 go build -o /out/dsh-tui .
+
 FROM quay.io/fedora/fedora:42
 
 RUN dnf --assumeyes --setopt=install_weak_deps=False install \
@@ -50,8 +57,20 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         gcc-c++ \
         make \
         python3 \
+        python3-pip \
     && dnf clean all
 RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION}
+
+# dsh SDK runtime — the single-file jsonrpc agent dsh-tui drives. Ships in
+# the runtime-bin wheel; same upstream release train as dsh, so same pin
+# (PyPI spells the version without the dash). The symlink gives dsh-tui a
+# stable DSH_RUNTIME_BIN across python minor bumps.
+RUN pip3 install "deepseek-harness-sdk==${DSH_VERSION/-rc./rc}" \
+    && ln -s "$(python3 -c 'from deepseek_harness_runtime import resolve_bundled_launch_args as r; print(r()[0])')" \
+        /usr/local/bin/dsh-jsonrpc-agent
+ENV DSH_RUNTIME_BIN=/usr/local/bin/dsh-jsonrpc-agent
+COPY --from=dsh-tui-build /out/dsh-tui /usr/local/bin/dsh-tui
+COPY dsh/tui.cordis.yml /root/.dsh/tui.cordis.yml
 
 # pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
