@@ -8,7 +8,7 @@ set -euo pipefail
 # this file while a sandbox session is running causes bogus syntax errors when
 # the session exits.
 main() {
-    # omp workspace is the monorepo root directory
+    # the workspace is the monorepo root directory
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 

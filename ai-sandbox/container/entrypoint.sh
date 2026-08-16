@@ -1,6 +1,6 @@
 #!/bin/bash
 # Entrypoint: set up git SSH commit signing before handing off to the
-# main process (omp). The private key is mounted at
+# main process (dsh). The private key is mounted at
 # /run/secrets/git_signing_key by compose. Git identity (name, email)
 # is fetched dynamically from the GitHub API via gh, since the proxy
 # injects the real GITHUB_TOKEN at runtime.
