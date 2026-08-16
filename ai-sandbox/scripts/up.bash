@@ -1,6 +1,6 @@
 #!/bin/bash
-# ai-sandbox/scripts/up.sh      # interactive omp
-# ai-sandbox/scripts/up.sh bash # plain shell instead
+# ai-sandbox/scripts/up.bash      # DeepSeek Harness Web UI
+# ai-sandbox/scripts/up.bash bash # plain shell instead
 set -euo pipefail
 
 # Everything lives inside main() so bash parses the whole file before running
@@ -11,15 +11,6 @@ main() {
     # omp workspace is the monorepo root directory
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
-
-    # "up.bash dsh" boots the DeepSeek Harness Web UI spike instead of
-    # omp; further args reach the sandbox container as usual (e.g. bash
-    # for a debug shell).
-    local spike=
-    if [[ ${1:-} == dsh ]]; then
-        spike=dsh
-        shift
-    fi
 
     # Render once so a pkl failure exits loudly under set -e, then feed each
     # compose call via process substitution -- no rendered file on disk.
@@ -42,12 +33,6 @@ main() {
     export DNSMASQ_IP=
     export PROXY_IP=
 
-    MEMORY_COMPOSE=(docker compose -f ai-sandbox/memory.compose.yml)
-    # No secrets needed: postgres is socket-only with trust auth, shared with
-    # sandbox sessions via the omp-memory-socket volume.
-    echo "starting agent memory service..."
-    "${MEMORY_COMPOSE[@]}" up -d --wait
-
     cleanup() {
         local status=$?
         if ! compose -p "$PROJECT" down --timeout 3 2>&1; then
@@ -55,17 +40,6 @@ main() {
             echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
             status=1
         fi
-
-        # Stop the shared memory service when the last sandbox exits.
-        local projects
-        if ! projects=$(docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null); then
-            echo "WARNING: could not enumerate containers; leaving memory service running" >&2
-            return $status
-        fi
-        if printf '%s\n' "$projects" | grep -q '^ai-sandbox-[0-9][0-9]*$'; then
-            return $status   # another session is still active
-        fi
-        "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
         return $status
     }
     trap cleanup EXIT
@@ -156,13 +130,6 @@ main() {
         infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" build --pull --no-cache ai-sandbox
     fi
 
-    if [[ $spike == dsh ]]; then
-        # FROM ai-sandbox: build after the base, and never --pull (the
-        # base is a local image, not a registry one). BuildKit re-derives
-        # these layers whenever the ai-sandbox image changes.
-        compose -p "$PROJECT" build dsh-sandbox
-    fi
-
     echo "starting credentials proxy..."
     infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" up -d --wait proxy
 
@@ -181,27 +148,14 @@ main() {
         "$(compose -p "$PROJECT" ps -q dnsmasq)")
     export DNSMASQ_IP
 
-    if [[ $spike == dsh ]]; then
-        echo "DeepSeek Harness Web UI: http://127.0.0.1:3080 (Ctrl-C tears the session down)"
-        # --service-ports publishes the Web UI on host loopback. The run
-        # must also be under infisical so envs are populated.
-        if [[ -t 0 && -t 1 ]]; then
-            infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm --service-ports dsh-sandbox "$@"
-        else
-            infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T --service-ports dsh-sandbox "$@"
-        fi
-        return
-    fi
-
-    if [[ $# -eq 0 ]]; then
-        set -- omp
-    fi
-
-    # The run must also be under infisical so envs are populated
+    echo "DeepSeek Harness Web UI: http://127.0.0.1:3080 (Ctrl-C tears the session down)"
+    # --service-ports publishes the Web UI on host loopback. Args
+    # override the service command (e.g. bash for a debug shell); the
+    # run must also be under infisical so envs are populated.
     if [[ -t 0 && -t 1 ]]; then
-        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm ai-sandbox "$@"
+        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm --service-ports ai-sandbox "$@"
     else
-        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T ai-sandbox "$@"
+        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T --service-ports ai-sandbox "$@"
     fi
 }
 

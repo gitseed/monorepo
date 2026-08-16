@@ -60,59 +60,17 @@ services {
     }
     stdin_open = true
     tty = true
-    // Placeholders so tools think a credential is present and send an
-    // Authorization header for the proxy to overwrite (omp provider
-    // availability, gh auth). AWS credentials are not in upstreams.yml
-    // (the proxy signs via aws_request_signing), but the aws CLI and
-    // boto3 need dummy values or they refuse to send requests at all.
-    environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
-      + List("AWS_ACCESS_KEY_ID=dummy-replaced-by-proxy",
-             "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy")
-    // On a compose network the sandbox keeps Docker's embedded DNS
-    // (127.0.0.11), which serves container names and link aliases itself
-    // and forwards only external queries to this server -- so the links
-    // below keep working while all external DNS flows through dnsmasq.
-    // DNSMASQ_IP is discovered from the running container by scripts/up.bash.
-    dns = "${DNSMASQ_IP}"
-    depends_on {
-      ["dnsmasq"] {
-        condition = "service_healthy"
-      }
-    }
-    secrets {
-      "git_signing_key"
-    }
-    links = rawUpstreams.map((u) -> "proxy:" + (u.host as String))
-    volumes {
-      "${GIT_PROJECT_DIR:-..}:/workspace"
-      // Postgres unix socket from memory.compose.yml — the only path between
-      // sandbox and the memory database (no shared network).
-      "memory-socket:/var/run/postgresql"
-    }
-    cap_drop {
-      "NET_RAW"
-      "NET_ADMIN"
-    }
-    security_opt {
-      "no-new-privileges:true"
-    }
-  }
-  // Spike: DeepSeek Harness Web UI. Same proxy/DNS plumbing as the omp
-  // sandbox above; boots dsh's web profile instead of omp.
-  ["dsh-sandbox"] {
-    image = "dsh-sandbox"
-    build {
-      context = "./container"
-      dockerfile = "dsh-sandbox.containerfile"
-    }
-    stdin_open = true
-    tty = true
     // dsh refuses --host 0.0.0.0 outright ("would expose remote code
     // execution to the network"), so bind the container's own address at
     // launch; the published port maps host loopback onto it.
     command = List("bash", "-c",
       "exec dsh web --host \"$(hostname -I | awk '{print $1}')\" --port 3080 --trusted-host 127.0.0.1:3080")
     ports = List("127.0.0.1:3080:3080")
+    // Placeholders so tools think a credential is present and send an
+    // Authorization header for the proxy to overwrite (dsh's OpenRouter
+    // route, gh auth). AWS credentials are not in upstreams.yml (the
+    // proxy signs via aws_request_signing), but the aws CLI and boto3
+    // need dummy values or they refuse to send requests at all.
     environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
       + List("AWS_ACCESS_KEY_ID=dummy-replaced-by-proxy",
              "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy",
@@ -123,6 +81,11 @@ services {
              // Never export session logs off-box (telemetry is default-
              // off upstream; this pins it).
              "DSH_TELEMETRY_DISABLED=1")
+    // On a compose network the sandbox keeps Docker's embedded DNS
+    // (127.0.0.11), which serves container names and link aliases itself
+    // and forwards only external queries to this server -- so the links
+    // below keep working while all external DNS flows through dnsmasq.
+    // DNSMASQ_IP is discovered from the running container by scripts/up.bash.
     dns = "${DNSMASQ_IP}"
     depends_on {
       ["dnsmasq"] {
@@ -152,13 +115,6 @@ secrets {
   }
   git_signing_key {
     environment = "GIT_SIGNING_KEY"
-  }
-}
-
-volumes {
-  ["memory-socket"] {
-    ["external"] = true
-    name = "omp-memory-socket"
   }
 }
 
