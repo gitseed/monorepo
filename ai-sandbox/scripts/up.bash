@@ -42,8 +42,7 @@ main() {
     cleanup() {
         local status=$?
         if ! compose -p "$PROJECT" down --timeout 3 2>&1; then
-            echo "WARNING: compose down failed -- the session proxy may still" >&2
-            echo "         be running with injected credentials. Reap by label:" >&2
+            echo "WARNING: compose down failed -- the session proxy may still be running with injected credentials. Reap by label:" >&2
             echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
             status=1
         fi
@@ -106,18 +105,20 @@ main() {
         if [[ -n ${AWS_PROFILE:-} && $AWS_PROFILE != default ]]; then
             echo "       aws configure set $1 $2 --profile $AWS_PROFILE" >&2
         else
-            echo "       Add '$1 = $2' to your default profile's section in ~/.aws/config" >&2
-            echo "       ([default], or [profile default] if your config uses that form)." >&2
+            echo "       Add '$1 = $2' to your default profile's section in ~/.aws/config ([default], or [profile default] if your config uses that form)." >&2
         fi
     }
     INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id || true)
     if [[ -z $INFISICAL_MACHINE_IDENTITY_ID ]]; then
-        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_machine_identity_id key." >&2
-        echo "       Set it to the machine identity to log in as, e.g.:" >&2
+        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_machine_identity_id key. Set it to the machine identity to log in as, e.g.:" >&2
         profile_key_hint infisical_machine_identity_id '<uuid>'
         exit 1
     fi
-    INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent)
+    if ! INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent); then
+        echo "ERROR: infisical machine identity login failed. It signs in with your AWS credentials (profile '${AWS_PROFILE:-default}'), so this usually means they are missing or expired -- an IMDS timeout (169.254.169.254) above is the AWS SDK finding no credentials at all. Re-auth with e.g.:" >&2
+        echo "       aws sso login${AWS_PROFILE:+ --profile $AWS_PROFILE}" >&2
+        exit 1
+    fi
     export INFISICAL_TOKEN
     # The infisical project comes from the AWS profile too, same as the
     # machine identity. Resolved by slug within the logged-in org: slugs are
@@ -126,8 +127,7 @@ main() {
     # is accepted by GET /api/v1/projects.
     INFISICAL_PROJECT_SLUG=$(aws configure get infisical_ai_project_slug || true)
     if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
-        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_ai_project_slug key." >&2
-        echo "       Set it to the project to pull from, e.g.:" >&2
+        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_ai_project_slug key. Set it to the project to pull from, e.g.:" >&2
         profile_key_hint infisical_ai_project_slug agent
         exit 1
     fi
