@@ -84,11 +84,25 @@ main() {
     # below ignore whatever org the stored `infisical login` session selected.
     # || true because a missing key exits 1 with no output, which set -e
     # would otherwise turn into a silent death before the guard below.
+    #
+    # aws configure set can't be suggested unconditionally: for the default
+    # profile it always writes [default], even when the config uses
+    # [profile default], and once both sections exist the CLI prefers
+    # [default] and the profile's other settings vanish. Only named profiles
+    # round-trip, so point default-profile users at the file itself.
+    profile_key_hint() {
+        if [[ -n ${AWS_PROFILE:-} && $AWS_PROFILE != default ]]; then
+            echo "       aws configure set $1 $2 --profile $AWS_PROFILE" >&2
+        else
+            echo "       Add '$1 = $2' to your default profile's section in ~/.aws/config" >&2
+            echo "       ([default], or [profile default] if your config uses that form)." >&2
+        fi
+    }
     INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id || true)
     if [[ -z $INFISICAL_MACHINE_IDENTITY_ID ]]; then
         echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_machine_identity_id key." >&2
         echo "       Set it to the machine identity to log in as, e.g.:" >&2
-        echo "       aws configure set infisical_machine_identity_id <uuid>" >&2
+        profile_key_hint infisical_machine_identity_id '<uuid>'
         exit 1
     fi
     INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent)
@@ -102,7 +116,7 @@ main() {
     if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
         echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_human_project_slug key." >&2
         echo "       Set it to the project to pull from, e.g.:" >&2
-        echo "       aws configure set infisical_human_project_slug ouroboros" >&2
+        profile_key_hint infisical_human_project_slug ouroboros
         exit 1
     fi
     INFISICAL_PROJECT_ID=$(
