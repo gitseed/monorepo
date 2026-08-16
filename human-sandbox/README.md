@@ -19,7 +19,7 @@ $ AWS_PROFILE=work human-sandbox/scripts/up.bash     # the 'work' environment
 $ AWS_PROFILE=work human-sandbox/scripts/up.bash emacs -nw
 ```
 
-The monorepo is mounted at `/workspace`. Git identity and https push credentials come from `GITHUB_TOKEN` (gh's credential helper); SSH commit signing is set up when `GIT_SIGNING_KEY` is present in the project — both plain environment passthroughs. Sessions are ephemeral like ai-sandbox: the container is destroyed on exit (`run --rm` + compose down), and the image rebuilds at least every 12 hours.
+The monorepo is mounted at `/workspace`. Inside you are the non-root `human` user with passwordless sudo (which is why, unlike ai-sandbox, `no-new-privileges` is not set — it blocks setuid). Git identity and https push credentials come from `GITHUB_TOKEN` (gh's credential helper); SSH commit signing is set up when `GIT_SIGNING_KEY` is present in the project — both plain environment passthroughs. Sessions are ephemeral like ai-sandbox: the container is destroyed on exit (`run --rm` + compose down), and the image rebuilds at least every 12 hours.
 
 The sandbox stays isolated to its environment: no host `~/.aws` inside. Instead the entrypoint derives the aws `cloudflare` profile that tofu's s3 state backend needs from the project's `CLOUDFLARE_API_TOKEN` (R2 S3 creds are the token id and the sha256 of its value, per the [cloudflare docs](https://developers.cloudflare.com/r2/api/tokens/#get-s3-api-credentials-from-an-api-token)), pinned to the right account by `CLOUDFLARE_ACCOUNT_ID`. `tofu` is installed and `TF_DATA_DIR` is `.sandbox_tofu`: provider downloads stay separate from the host's `.terraform` (darwin binaries the container can't run) and persist across sessions on the mounted workspace.
 

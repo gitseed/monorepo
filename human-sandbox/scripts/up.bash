@@ -46,7 +46,10 @@ main() {
         fi
         return $status
     }
-    trap cleanup EXIT
+    # Also on signals: closing the terminal kills compose run's client, and
+    # its --rm cleanup is client-side — without this the session container
+    # keeps running with credentials in its environment.
+    trap cleanup EXIT HUP INT TERM
 
     # Rebuild at least every 12 hours to pick up package/tool updates.
     built_recently() {

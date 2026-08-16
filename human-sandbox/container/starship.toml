@@ -1,0 +1,21 @@
+add_newline = false
+# Same prompt as the host, plus the hostname ("sandbox", set in compose.pkl)
+# so a sandbox shell is never mistaken for a host shell.
+format = """$hostname$git_branch$terraform$python$directory$character"""
+
+[hostname]
+ssh_only = false
+format = '[$hostname]($style) '
+style = 'bold red'
+
+[character]
+success_symbol = '\$'
+
+[aws]
+disabled = true
+
+[git_status]
+disabled = true
+
+[battery]
+disabled = true

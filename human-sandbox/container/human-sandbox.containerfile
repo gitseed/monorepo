@@ -12,6 +12,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         less \
         openssh-clients \
         procps-ng \
+        sudo \
         tar \
         unzip \
         which \
@@ -55,6 +56,23 @@ RUN curl -fsSL -o /tmp/tofu.tar.gz \
     && install -m 0755 /tmp/tofu /usr/local/bin/tofu \
     && rm -f /tmp/tofu*
 
+# starship prompt — not packaged in Fedora 42, so pinned like the rest.
+ARG STARSHIP_VERSION=1.26.0
+ARG STARSHIP_SHA256=dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b
+RUN curl -fsSL -o /tmp/starship.tar.gz \
+        "https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-aarch64-unknown-linux-musl.tar.gz" \
+    && echo "${STARSHIP_SHA256}  /tmp/starship.tar.gz" | sha256sum --check \
+    && tar -xzf /tmp/starship.tar.gz -C /tmp starship \
+    && install -m 0755 /tmp/starship /usr/local/bin/starship \
+    && rm -f /tmp/starship*
+
+# The occupant: non-root with passwordless sudo. Compose must not set
+# no-new-privileges — sudo is setuid and stops working under it.
+RUN useradd --create-home human \
+    && echo 'human ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/human \
+    && chmod 440 /etc/sudoers.d/human \
+    && echo 'eval "$(starship init bash)"' >> /home/human/.bashrc
+
 # Keep tofu's data dir out of .terraform: the host's .terraform holds darwin
 # provider binaries the container can't execute, and .sandbox_tofu lives on
 # the mounted /workspace, so the linux provider cache persists across sessions.
@@ -67,13 +85,16 @@ ENV EDITOR=emacs-nox
 # [select] instead of [end] in the xterm terminfo. The init overrides this
 # in input-decode-map so both Home and End work in any cursor key mode.
 # Works regardless of TERM — input-decode-map is always active.
-COPY emacs-init.el /root/.emacs.d/init.el
+COPY --chown=human:human emacs-init.el /home/human/.emacs.d/init.el
+
+COPY --chown=human:human starship.toml /home/human/.config/starship.toml
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + GITHUB_TOKEN
 # exposed into the environment).
 COPY entrypoint.sh /entrypoint.sh
 
+USER human
 WORKDIR /workspace
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

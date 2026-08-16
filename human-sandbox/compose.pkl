@@ -16,6 +16,8 @@ services {
     }
     stdin_open = true
     tty = true
+    // Shown in the prompt (starship hostname module) to mark sandbox shells.
+    hostname = "sandbox"
     // Bare names: compose copies each variable from its own environment,
     // which up.bash populates with real values via infisical run. The
     // sandbox occupant is a trusted human, so no credentials proxy and no
@@ -28,9 +30,8 @@ services {
       "NET_RAW"
       "NET_ADMIN"
     }
-    security_opt {
-      "no-new-privileges:true"
-    }
+    // No no-new-privileges (unlike ai-sandbox): the occupant runs as the
+    // non-root "human" user and sudo is setuid, which that flag blocks.
   }
 }
 
