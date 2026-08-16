@@ -106,8 +106,7 @@ main() {
         exit 1
     fi
     if ! INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent); then
-        echo "ERROR: infisical machine identity login failed. It signs in with your AWS credentials (profile '${AWS_PROFILE:-default}'), so this usually means they are missing or expired -- an IMDS timeout (169.254.169.254) above is the AWS SDK finding no credentials at all. Re-auth with e.g.:" >&2
-        echo "       aws sso login${AWS_PROFILE:+ --profile $AWS_PROFILE}" >&2
+        echo "ERROR: infisical machine identity login failed. It signs in with your AWS credentials (profile '${AWS_PROFILE:-default}'), so this usually means they are missing or expired -- an IMDS timeout (169.254.169.254) above is the AWS SDK finding no credentials at all. Re-auth with e.g. \`aws sso login${AWS_PROFILE:+ --profile $AWS_PROFILE}\`" >&2
         exit 1
     fi
     export INFISICAL_TOKEN
