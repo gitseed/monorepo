@@ -12,6 +12,15 @@ main() {
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
+    # "up.bash dsh" boots the DeepSeek Harness Web UI spike instead of
+    # omp; further args reach the sandbox container as usual (e.g. bash
+    # for a debug shell).
+    local spike=
+    if [[ ${1:-} == dsh ]]; then
+        spike=dsh
+        shift
+    fi
+
     # Render once so a pkl failure exits loudly under set -e, then feed each
     # compose call via process substitution -- no rendered file on disk.
     # --project-directory makes relative build.context paths resolve from
@@ -147,6 +156,13 @@ main() {
         infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" build --pull --no-cache ai-sandbox
     fi
 
+    if [[ $spike == dsh ]]; then
+        # FROM ai-sandbox: build after the base, and never --pull (the
+        # base is a local image, not a registry one). BuildKit re-derives
+        # these layers whenever the ai-sandbox image changes.
+        compose -p "$PROJECT" build dsh-sandbox
+    fi
+
     echo "starting credentials proxy..."
     infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" up -d --wait proxy
 
@@ -164,6 +180,18 @@ main() {
     DNSMASQ_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
         "$(compose -p "$PROJECT" ps -q dnsmasq)")
     export DNSMASQ_IP
+
+    if [[ $spike == dsh ]]; then
+        echo "DeepSeek Harness Web UI: http://127.0.0.1:3080 (Ctrl-C tears the session down)"
+        # --service-ports publishes the Web UI on host loopback. The run
+        # must also be under infisical so envs are populated.
+        if [[ -t 0 && -t 1 ]]; then
+            infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm --service-ports dsh-sandbox "$@"
+        else
+            infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T --service-ports dsh-sandbox "$@"
+        fi
+        return
+    fi
 
     if [[ $# -eq 0 ]]; then
         set -- omp

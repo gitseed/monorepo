@@ -97,6 +97,53 @@ services {
       "no-new-privileges:true"
     }
   }
+  // Spike: DeepSeek Harness Web UI. Same proxy/DNS plumbing as the omp
+  // sandbox above; boots dsh's web profile instead of omp.
+  ["dsh-sandbox"] {
+    image = "dsh-sandbox"
+    build {
+      context = "./container"
+      dockerfile = "dsh-sandbox.containerfile"
+    }
+    stdin_open = true
+    tty = true
+    // dsh refuses --host 0.0.0.0 outright ("would expose remote code
+    // execution to the network"), so bind the container's own address at
+    // launch; the published port maps host loopback onto it.
+    command = List("bash", "-c",
+      "exec dsh web --host \"$(hostname -I | awk '{print $1}')\" --port 3080 --trusted-host 127.0.0.1:3080")
+    ports = List("127.0.0.1:3080:3080")
+    environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
+      + List("AWS_ACCESS_KEY_ID=dummy-replaced-by-proxy",
+             "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy",
+             // The container is already the confinement boundary; dsh's
+             // default ask-approval policy would stall an unattended
+             // session.
+             "DSH_PERMISSION_MODE=danger-full-access",
+             // Never export session logs off-box (telemetry is default-
+             // off upstream; this pins it).
+             "DSH_TELEMETRY_DISABLED=1")
+    dns = "${DNSMASQ_IP}"
+    depends_on {
+      ["dnsmasq"] {
+        condition = "service_healthy"
+      }
+    }
+    secrets {
+      "git_signing_key"
+    }
+    links = rawUpstreams.map((u) -> "proxy:" + (u.host as String))
+    volumes {
+      "${GIT_PROJECT_DIR:-..}:/workspace"
+    }
+    cap_drop {
+      "NET_RAW"
+      "NET_ADMIN"
+    }
+    security_opt {
+      "no-new-privileges:true"
+    }
+  }
 }
 
 secrets {
