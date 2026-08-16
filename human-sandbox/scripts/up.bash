@@ -1,6 +1,15 @@
 #!/bin/bash
-# ai-sandbox/scripts/up.sh      # interactive omp
-# ai-sandbox/scripts/up.sh bash # plain shell instead
+# human-sandbox/scripts/up.bash               # bash in the current AWS profile's env
+# human-sandbox/scripts/up.bash emacs -nw     # explicit command
+#
+# A working environment is an AWS profile: each profile in ~/.aws/config
+# carries an infisical_machine_identity_id key, and the profile's AWS
+# account maps to its own infisical org. The profile also names which
+# infisical project to pull from via infisical_human_project_slug (e.g.
+# "ouroboros" for human admin credentials; ai-sandbox reads its own
+# project from infisical_ai_project_slug), resolved to an ID at runtime.
+# Select the environment with AWS_PROFILE; its secrets are exposed directly
+# into the sandbox (no credentials proxy — the occupant is a trusted human).
 set -euo pipefail
 
 # Everything lives inside main() so bash parses the whole file before running
@@ -15,54 +24,31 @@ main() {
     # Render once so a pkl failure exits loudly under set -e, then feed each
     # compose call via process substitution -- no rendered file on disk.
     # --project-directory makes relative build.context paths resolve from
-    # ai-sandbox/, not /dev/fd/. Exported for the infisical-spawned subshells.
-    COMPOSE_CONFIG=$(pkl eval --format yaml ai-sandbox/compose.pkl)
+    # human-sandbox/, not /dev/fd/. Exported for the infisical-spawned subshells.
+    COMPOSE_CONFIG=$(pkl eval --format yaml human-sandbox/compose.pkl)
     export COMPOSE_CONFIG
     compose() {
-        docker compose --project-directory ai-sandbox \
+        docker compose --project-directory human-sandbox \
             -f <(printf '%s\n' "$COMPOSE_CONFIG") "$@"
     }
     export -f compose
 
-    PROJECT=ai-sandbox-$$
+    PROJECT=human-sandbox-$$
     export GIT_PROJECT_DIR
-    # Rendered into compose config (ai-sandbox dns:, dnsmasq --address); the
-    # real values are discovered once each container is up. Exported empty
-    # up front so compose invocations before then (builds, service ups)
-    # don't warn about unset variables.
-    export DNSMASQ_IP=
-    export PROXY_IP=
-
-    MEMORY_COMPOSE=(docker compose -f ai-sandbox/memory.compose.yml)
-    # No secrets needed: postgres is socket-only with trust auth, shared with
-    # sandbox sessions via the omp-memory-socket volume.
-    echo "starting agent memory service..."
-    "${MEMORY_COMPOSE[@]}" up -d --wait
 
     cleanup() {
         local status=$?
         if ! compose -p "$PROJECT" down --timeout 3 2>&1; then
-            echo "WARNING: compose down failed -- the session proxy may still" >&2
-            echo "         be running with injected credentials. Reap by label:" >&2
+            echo "WARNING: compose down failed -- the session container may still" >&2
+            echo "         be running with credentials in its environment. Reap by label:" >&2
             echo "         docker ps -q --filter label=com.docker.compose.project=$PROJECT | xargs -r docker rm -f" >&2
             status=1
         fi
-
-        # Stop the shared memory service when the last sandbox exits.
-        local projects
-        if ! projects=$(docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null); then
-            echo "WARNING: could not enumerate containers; leaving memory service running" >&2
-            return $status
-        fi
-        if printf '%s\n' "$projects" | grep -q '^ai-sandbox-[0-9][0-9]*$'; then
-            return $status   # another session is still active
-        fi
-        "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
         return $status
     }
     trap cleanup EXIT
 
-    # Rebuild at least every 12 hours to update harness version.
+    # Rebuild at least every 12 hours to pick up package/tool updates.
     built_recently() {
         local max_age=$(( 12 * 3600 ))
         local created
@@ -84,10 +70,12 @@ main() {
         (( age >= 0 && age < max_age ))
     }
 
-    if built_recently credentials-proxy; then
-        compose -p "$PROJECT" build proxy
+    # No build-time secrets (no CA to bake in — there is no MITM proxy), so
+    # the build runs outside infisical.
+    if built_recently human-sandbox; then
+        compose -p "$PROJECT" build human-sandbox
     else
-        compose -p "$PROJECT" build --pull --no-cache proxy
+        compose -p "$PROJECT" build --pull --no-cache human-sandbox
     fi
 
     # Infisical auth derives from the AWS profile: each profile in ~/.aws/config
@@ -124,11 +112,11 @@ main() {
     # fixed by tofu (ouroboros/tofu, agent-secrets/tofu) and stable across
     # orgs, so no project IDs are stored anywhere. The machine identity token
     # is accepted by GET /api/v1/projects.
-    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_ai_project_slug || true)
+    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_human_project_slug || true)
     if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
-        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_ai_project_slug key." >&2
+        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_human_project_slug key." >&2
         echo "       Set it to the project to pull from, e.g.:" >&2
-        profile_key_hint infisical_ai_project_slug agent
+        profile_key_hint infisical_human_project_slug ouroboros
         exit 1
     fi
     INFISICAL_PROJECT_ID=$(
@@ -142,39 +130,15 @@ main() {
     fi
     export INFISICAL_PROJECT_ID
 
-    if built_recently ai-sandbox; then
-        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" build ai-sandbox
-    else
-        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" build --pull --no-cache ai-sandbox
-    fi
-
-    echo "starting credentials proxy..."
-    infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" up -d --wait proxy
-
-    # dnsmasq's --address=/amazonaws.com/... interpolates the proxy's IP
-    # into its command at compose-invocation time, so discover it first.
-    PROXY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
-        "$(compose -p "$PROJECT" ps -q proxy)")
-    export PROXY_IP
-
-    echo "starting dnsmasq..."
-    compose -p "$PROJECT" up -d --wait dnsmasq
-    # The sandbox's dns: needs a literal IP at container-create time.
-    # Docker's own IPAM gives each project network a collision-free subnet,
-    # so discover the address it assigned instead of reserving one up front.
-    DNSMASQ_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
-        "$(compose -p "$PROJECT" ps -q dnsmasq)")
-    export DNSMASQ_IP
-
     if [[ $# -eq 0 ]]; then
-        set -- omp
+        set -- bash
     fi
 
-    # The run must also be under infisical so envs are populated
+    # The run must be under infisical so envs are populated
     if [[ -t 0 && -t 1 ]]; then
-        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm ai-sandbox "$@"
+        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm human-sandbox "$@"
     else
-        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T ai-sandbox "$@"
+        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T human-sandbox "$@"
     fi
 }
 
