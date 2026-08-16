@@ -6,7 +6,5 @@
 # (openrouter/firecrawl/context7), no proxy artifacts (GITHUB_TOKEN_BASIC).
 # Anything absent from the project simply arrives unset.
 - GITHUB_TOKEN
-- AWS_ACCESS_KEY_ID
-- AWS_SECRET_ACCESS_KEY
 - CLOUDFLARE_API_TOKEN
 - GIT_SIGNING_KEY
