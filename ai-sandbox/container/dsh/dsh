@@ -1,0 +1,7 @@
+#!/bin/sh
+# DeepSeek Harness launcher. Deno needs the permissions up front (there
+# is no prompt to answer inside the sandbox) and the credentials-proxy
+# CA explicitly — its TLS stack does not read the OS trust store.
+exec deno run --allow-all \
+    --ca /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem \
+    /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"

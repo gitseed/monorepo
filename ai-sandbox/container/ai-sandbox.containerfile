@@ -37,19 +37,21 @@ RUN curl -fsSL "https://github.com/denoland/deno/releases/download/v${DENO_VERSI
     && echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum --check \
     && unzip -o /tmp/deno.zip -d /usr/local/bin \
     && chmod 0755 /usr/local/bin/deno \
+    && ln -s /usr/local/bin/deno /usr/local/bin/node \
     && rm -f /tmp/deno.zip
 
-# DeepSeek Harness — developer preview, so pinned; upstream promises
-# compatibility-breaking changes, re-baseline deliberately.
+# DeepSeek Harness — developer preview, version pinned in
+# dsh/host-package.json; upstream promises compatibility-breaking
+# changes, re-baseline deliberately.
 #
 # Installed as a local npm project, not a global bin: dsh's native
 # modules (node-pty, Node-API) load only with a local node_modules.
 #
 # gcc, g++, make, and python3 are the build-time floor for the install:
 # node-pty ships no linux prebuilds, so its install script falls back
-# to node-gyp and compiles. node-gyp spawns bare `node`; with no real
-# node on PATH, deno's automatic node shim fields it.
-ARG DSH_VERSION=0.1.0-rc.6
+# to node-gyp and compiles. The node symlink above (deno in node mode,
+# detected via argv[0]) fields the bare `node` that node-gyp and the
+# lifecycle scripts spawn. CI=true keeps deno install non-interactive.
 RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         gcc \
         gcc-c++ \
@@ -58,12 +60,9 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
     && dnf clean all
 RUN deno install -g npm:node-gyp \
     && ln -sf /root/.deno/bin/node-gyp /usr/local/bin/node-gyp
-RUN mkdir -p /opt/dsh \
-    && printf '{"name":"dsh-host","private":true,"dependencies":{"@deepseek-ai/dsh":"%s"}}\n' "${DSH_VERSION}" > /opt/dsh/package.json \
-    && cd /opt/dsh \
-    && deno install \
-    && printf '#!/bin/sh\nexec deno run --allow-all --ca /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"\n' > /usr/local/bin/dsh \
-    && chmod 0755 /usr/local/bin/dsh
+COPY dsh/host-package.json /opt/dsh/package.json
+RUN cd /opt/dsh && CI=true deno install
+COPY --chmod=0755 dsh/dsh /usr/local/bin/dsh
 
 # pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
