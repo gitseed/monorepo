@@ -61,7 +61,15 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
 RUN deno install -g npm:node-gyp \
     && ln -sf /root/.deno/bin/node-gyp /usr/local/bin/node-gyp
 COPY dsh/host-package.json /opt/dsh/package.json
-RUN cd /opt/dsh && CI=true deno install
+# deno's npm downloads occasionally wedge mid-flight; give each attempt
+# a bounded window and let the next resume from the warm cache. The
+# final test fails loud if no attempt completes.
+RUN cd /opt/dsh \
+    && for attempt in 1 2 3 4; do \
+           CI=true timeout 300 deno install && break; \
+       done \
+    && test -f node_modules/@deepseek-ai/dsh/lib/bin.js \
+    && test -f node_modules/node-pty/build/Release/pty.node
 COPY --chmod=0755 dsh/dsh /usr/local/bin/dsh
 
 # pkl — Apple Pkl CLI config language.
