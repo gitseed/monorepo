@@ -9,7 +9,7 @@ $ ai-sandbox/scripts/up.bash bash   # plain shell instead
 
 Model routing: `container/dsh/settings.yaml` mounts the pi-ai adapter's OpenRouter route (`apiKeyEnv: OPENROUTER_API_KEY` — the dummy env var the credentials proxy replaces mid-flight), and `container/dsh/cordis.patch.yml` points the deployment default model at `qwen/qwen3.8-max`. The settings document is hot-reloaded from `$DSH_HOME/settings.yaml`; the profile patch layer is baked into the image.
 
-The Web UI binds the container's own address at launch — dsh refuses `--host 0.0.0.0` outright ("would expose remote code execution to the network") — and the compose service publishes host loopback onto it, with `--trusted-host 127.0.0.1:3080` whitelisted for the browser-trust fence.
+The Web UI binds all interfaces inside the container, pinned by the profile patch layer: the webserver schema accepts only `127.0.0.1` or `0.0.0.0`, a loopback bind is unreachable through the published port, and `--host 0.0.0.0` is refused at the flag level ("would expose remote code execution to the network") while the config layer supports it. The compose service publishes host loopback onto it; the browser-trust fence accepts loopback `Host` headers natively, so no `--trusted-host` whitelist is needed.
 
 Trust posture: `DSH_PERMISSION_MODE=danger-full-access` (the container is already the confinement boundary; dsh's default ask-approval policy would stall an unattended session) and `DSH_TELEMETRY_DISABLED=1` (telemetry is default-off upstream; this pins it).
 

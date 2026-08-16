@@ -60,11 +60,13 @@ services {
     }
     stdin_open = true
     tty = true
-    // dsh refuses --host 0.0.0.0 outright ("would expose remote code
-    // execution to the network"), so bind the container's own address at
-    // launch; the published port maps host loopback onto it.
-    command = List("bash", "-c",
-      "exec dsh web --host \"$(hostname -I | awk '{print $1}')\" --port 3080 --trusted-host 127.0.0.1:3080")
+    // The bind (0.0.0.0:3080) comes from the profile patch layer
+    // (container/dsh/cordis.patch.yml), not flags: the webserver schema
+    // accepts only 127.0.0.1 or 0.0.0.0, loopback is unreachable through
+    // the published port, and --host refuses 0.0.0.0 while the config
+    // layer supports it. The browser-trust fence accepts loopback Host
+    // headers natively, so no --trusted-host is needed.
+    command = List("dsh", "web")
     ports = List("127.0.0.1:3080:3080")
     // Placeholders so tools think a credential is present and send an
     // Authorization header for the proxy to overwrite (dsh's OpenRouter

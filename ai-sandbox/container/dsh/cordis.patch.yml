@@ -11,3 +11,17 @@
   config:
     provider: openrouter
     model: qwen/qwen3.8-max
+
+# The webserver schema binds only "127.0.0.1" or "0.0.0.0", and a loopback
+# bind is unreachable through compose's published port (it forwards to the
+# container's eth0 address). `--host 0.0.0.0` is refused at the flag level
+# ("would expose remote code execution to the network"), but the config
+# layer supports the all-interfaces bind (LAN trust is derived from it), so
+# pin it here. The compose service publishes host loopback only, so nothing
+# off-box reaches the socket; inside, the container is the confinement
+# boundary anyway.
+- id: webserver
+  name: '@deepseek-ai/dsh-host-webserver'
+  config:
+    host: 0.0.0.0
+    port: 3080
