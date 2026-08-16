@@ -36,29 +36,13 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
-# TypeScript 7 for LSP tool (references, rename, diagnostics).
-# TS 7 ships a native LSP server (tsc --lsp --stdio); no wrapper needed.
-RUN bun add -g typescript@7 \
-    && ln -sf /root/.bun/bin/tsc /usr/local/bin/tsc
-
-RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
-        | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary
-
-# RTK — CLI proxy that compresses bash output for LLM context.
-ARG RTK_VERSION=0.44.2
-ARG RTK_SHA256=5cd3f7fa2697faf9e5b77a10ce4e699006e02d4752d792f06550697eb4b8e8a9
-RUN curl -fsSL -o /tmp/rtk.tar.gz \
-        "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-aarch64-unknown-linux-gnu.tar.gz" \
-    && echo "${RTK_SHA256}  /tmp/rtk.tar.gz" | sha256sum --check \
-    && tar -xzf /tmp/rtk.tar.gz -C /usr/local/bin/ \
-    && chmod 0755 /usr/local/bin/rtk \
-    && rm -f /tmp/rtk.tar.gz
-
-# Install the RTK Pi extension and relocate it to the omp extensions directory.
-RUN rtk init -g --agent pi --auto-patch \
-    && mkdir -p /root/.omp/agent/extensions \
-    && cp /root/.pi/agent/extensions/rtk.ts /root/.omp/agent/extensions/rtk.ts \
-    && rm -rf /root/.pi
+# DeepSeek Harness — developer preview, so pinned; upstream promises
+# compatibility-breaking changes, re-baseline deliberately. The bin's
+# node shebang lands on the bun symlink above — intentional: whether
+# dsh works on bun is part of the spike.
+ARG DSH_VERSION=0.1.0-rc.6
+RUN bun add -g @deepseek-ai/dsh@${DSH_VERSION} \
+    && ln -sf /root/.bun/bin/dsh /usr/local/bin/dsh
 
 # pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
@@ -87,23 +71,16 @@ ENV EDITOR=emacs-nox
 # Works regardless of TERM — input-decode-map is always active.
 COPY emacs-init.el /root/.emacs.d/init.el
 
-COPY agent-config.yml /root/.omp/agent/config.yml
-# Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
-COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
-
-# OpenRouter Advisor tools — each JSON in openrouter-advisor/advisors/ defines one advisor tool.
-COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
-COPY extensions/openrouter-advisor/advisors/ /root/.omp/agent/extensions/openrouter-advisor/advisors/
-
-# Memory extension — captures memories to the shared postgres over its unix
-# socket via Bun's native SQL bindings. Configured (incl. enabled/disabled)
-# by memory.json. The entry point imports ./memory/{config,openrouter};
-# the subfolder is inert to omp's extension scanner (no index.ts).
-COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
-COPY extensions/memory/config.ts extensions/memory/openrouter.ts /root/.omp/agent/extensions/memory/
-COPY extensions/memory/memory.json /root/.omp/agent/memory.json
-# System-prompt contract for the memory system and automatic surfacing.
-COPY extensions/memory/APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
+# Harness home, pre-initialized: the profile manifest mirrors dsh's own
+# web template (bundles resolve from the dsh installation, so the profile
+# needs no node_modules until out-of-tree plugins are installed), the
+# patch layer points the default model at the OpenRouter route, and
+# settings.yaml mounts that route with the credential reference the
+# proxy-unlocked env var satisfies.
+COPY dsh/package.json /root/.dsh/profiles/web/package.json
+COPY dsh/pnpm-workspace.yaml /root/.dsh/profiles/web/pnpm-workspace.yaml
+COPY dsh/cordis.patch.yml /root/.dsh/profiles/web/cordis.patch.yml
+COPY dsh/settings.yaml /root/.dsh/settings.yaml
 
 # git SSH commit signing — the entrypoint sets up identity and signing
 # config before handing off to the main process (needs gh CLI + proxy-injected token).
