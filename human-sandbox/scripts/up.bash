@@ -82,7 +82,15 @@ main() {
     # carries an infisical_machine_identity_id key, and aws-iam login exchanges
     # the SSO session for a token. INFISICAL_TOKEN makes every infisical run
     # below ignore whatever org the stored `infisical login` session selected.
-    INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id)
+    # || true because a missing key exits 1 with no output, which set -e
+    # would otherwise turn into a silent death before the guard below.
+    INFISICAL_MACHINE_IDENTITY_ID=$(aws configure get infisical_machine_identity_id || true)
+    if [[ -z $INFISICAL_MACHINE_IDENTITY_ID ]]; then
+        echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_machine_identity_id key." >&2
+        echo "       Set it to the machine identity to log in as, e.g.:" >&2
+        echo "       aws configure set infisical_machine_identity_id <uuid>" >&2
+        exit 1
+    fi
     INFISICAL_TOKEN=$(infisical login --method=aws-iam --machine-identity-id "$INFISICAL_MACHINE_IDENTITY_ID" --plain --silent)
     export INFISICAL_TOKEN
     # The infisical project comes from the AWS profile too, same as the
@@ -90,7 +98,7 @@ main() {
     # fixed by tofu (ouroboros/tofu, agent-secrets/tofu) and stable across
     # orgs, so no project IDs are stored anywhere. The machine identity token
     # is accepted by GET /api/v1/projects.
-    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_human_project_slug)
+    INFISICAL_PROJECT_SLUG=$(aws configure get infisical_human_project_slug || true)
     if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
         echo "ERROR: AWS profile '${AWS_PROFILE:-default}' has no infisical_human_project_slug key." >&2
         echo "       Set it to the project to pull from, e.g.:" >&2
@@ -114,9 +122,9 @@ main() {
 
     # The run must be under infisical so envs are populated
     if [[ -t 0 && -t 1 ]]; then
-        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm human-sandbox "$@"
+        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm human-sandbox "$@"
     else
-        infisical run -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T human-sandbox "$@"
+        infisical run --env=global -- bash -c 'compose "$@"' _ -p "$PROJECT" run --rm -T human-sandbox "$@"
     fi
 }
 
