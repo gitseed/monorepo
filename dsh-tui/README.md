@@ -25,11 +25,24 @@ DEEPSEEK_BASE_URL=https://openrouter.ai/api/v1 \
 ./dsh-tui -cordis minimal.cordis.yml -model qwen/qwen3.8-max
 ```
 
-Enter sends, ctrl+j newline, ctrl+r toggles raw NDJSON logging of
-subsequent events, ctrl+c quits. `-probe -prompt '...'` runs one headless
-turn and dumps the notification stream instead (how the protocol below was
-captured). `-replay file.ndjson` feeds a captured stream through the UI
-with no runtime or model — deterministic frames for styling work.
+Enter sends (mid-turn sends are steering — the runtime's inbox absorbs
+them, shown stacked as `(queued)`), ctrl+j newline, ctrl+r toggles raw
+NDJSON logging of subsequent events. Esc (= ctrl+c) interrupts a running
+turn on double-press — the composition routes no `session/cancel` (probed:
+-32603), so interrupt kills the runtime and relaunches it; the session
+continues. Quit with `/quit`, `/exit`, or `exit` — never a control chord.
+
+Every notification is appended to `<session-root>/tui/<session-id>.ndjson`;
+`-session <id>` replays that transcript through the renderer into scrollback
+before going live, and transcripts double as `-replay` fixtures.
+`-probe -prompt '...'` runs one headless turn and dumps the notification
+stream (how the protocol below was captured). `-replay file.ndjson` drives
+the UI from a captured stream with no runtime or model.
+
+`make test` = vet + table tests (rendering contract) + golden-frame diff
+(`scripts/golden.bash`, `UPDATE=1` regenerates). `make setup` installs the
+runtime wheel — platform-specific (this checkout: macos-arm64; the
+ai-sandbox image builds its own linux one).
 
 ## Screenshot harness
 

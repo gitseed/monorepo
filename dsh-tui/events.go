@@ -17,16 +17,14 @@ import (
 )
 
 var (
-	colAccent = lipgloss.AdaptiveColor{Light: "26", Dark: "75"}   // user prompt
-	colText   = lipgloss.AdaptiveColor{Light: "235", Dark: "252"} // assistant text
-	colMark   = lipgloss.AdaptiveColor{Light: "29", Dark: "115"}  // assistant bullet
-	colTool   = lipgloss.AdaptiveColor{Light: "94", Dark: "179"}  // tool name
+	colAccent = lipgloss.AdaptiveColor{Light: "26", Dark: "75"}  // user prompt
+	colMark   = lipgloss.AdaptiveColor{Light: "29", Dark: "115"} // assistant bullet
+	colTool   = lipgloss.AdaptiveColor{Light: "94", Dark: "179"} // tool name
 	colDim    = lipgloss.AdaptiveColor{Light: "245", Dark: "243"}
 	colErr    = lipgloss.AdaptiveColor{Light: "124", Dark: "203"}
 	colCode   = lipgloss.AdaptiveColor{Light: "90", Dark: "216"}
 
 	styleUser   = lipgloss.NewStyle().Foreground(colAccent).Bold(true)
-	styleText   = lipgloss.NewStyle().Foreground(colText)
 	styleMark   = lipgloss.NewStyle().Foreground(colMark)
 	styleTool   = lipgloss.NewStyle().Foreground(colTool)
 	styleDim    = lipgloss.NewStyle().Foreground(colDim)

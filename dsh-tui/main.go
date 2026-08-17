@@ -115,7 +115,10 @@ func main() {
 		}
 		m.trans = trans
 	}
-	if _, err := tea.NewProgram(m).Run(); err != nil {
+	p := tea.NewProgram(m)
+	m.program = p
+	go pump(p, c)
+	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -231,6 +234,7 @@ type uiModel struct {
 	turnStart time.Time
 	width     int
 
+	program    *tea.Program
 	launch     *launcher   // nil in replay mode
 	trans      *transcript // nil in replay mode
 	armed      bool        // first esc pressed, second interrupts
@@ -259,21 +263,26 @@ func newModel(client conn, sessionID, modelName string) *uiModel {
 	}
 }
 
-func (m *uiModel) listen() tea.Cmd {
-	return func() tea.Msg {
+// pump forwards a conn's channels into the program. Unlike a listen-cmd
+// per message, Send drains as fast as events arrive, so a tool-output
+// burst can't fill the client's channel and backpressure the runtime's
+// stdout reader. Exits after the conn dies (a restart starts a new pump).
+func pump(p *tea.Program, c conn) {
+	for {
 		select {
-		case n := <-m.client.NotifCh():
-			return notifMsg(n)
-		case r := <-m.client.ReqCh():
-			return reqMsg(r)
-		case err := <-m.client.DiedCh():
-			return diedMsg{err}
+		case n := <-c.NotifCh():
+			p.Send(notifMsg(n))
+		case r := <-c.ReqCh():
+			p.Send(reqMsg(r))
+		case err := <-c.DiedCh():
+			p.Send(diedMsg{err})
+			return
 		}
 	}
 }
 
 func (m *uiModel) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.listen())
+	return textarea.Blink
 }
 
 // commit finalizes a logical line into native scrollback, unwrapped — the
@@ -353,7 +362,8 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.client = msg.client
 		m.status = "idle"
 		m.note = ""
-		return m, m.listen()
+		go pump(m.program, m.client)
+		return m, nil
 
 	case spinner.TickMsg:
 		if m.working() {
@@ -367,7 +377,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.events++
 		n := Notification(msg)
 		m.trans.append(n)
-		cmds := []tea.Cmd{m.listen()}
+		var cmds []tea.Cmd
 		// Single-session UI: no session filter, so replayed and resumed
 		// streams drive the status too.
 		if n.Method == "session.status" {
@@ -427,8 +437,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case reqMsg:
 		m.client.RespondError(msg.ID, -32601, "dsh-tui spike: client-side method not supported")
-		return m, tea.Batch(m.listen(),
-			commit(styleErr.Render(fmt.Sprintf("? incoming request %s ", msg.Method))+compactJSON(msg.Payload, 300)))
+		return m, commit(styleErr.Render(fmt.Sprintf("? incoming request %s ", msg.Method)) + compactJSON(msg.Payload, 300))
 
 	case promptDoneMsg:
 		if msg.err != nil {
