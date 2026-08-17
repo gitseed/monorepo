@@ -307,7 +307,13 @@ func Summarize(n harness.Notification) string {
 		return ""
 	case "turn/end":
 		if reason, ok := data["reason"].(map[string]any); ok {
-			if kind, _ := reason["kind"].(string); kind != "completed" && kind != "" {
+			switch kind, _ := reason["kind"].(string); kind {
+			case "completed", "":
+			case "aborted":
+				// Explicit user cancellation (session/cancel): expected,
+				// not an error — the session keeps its context.
+				return StyleDim.Render("— interrupted")
+			default:
 				return StyleErr.Render(fmt.Sprintf("✗ turn ended: %s ", kind)) + StyleDim.Render(CompactJSON(reason, 300))
 			}
 		}

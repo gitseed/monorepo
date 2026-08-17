@@ -47,6 +47,7 @@ type notifMsg harness.Notification
 type reqMsg harness.IncomingRequest
 type diedMsg struct{ err error }
 type promptDoneMsg struct{ err error }
+type cancelDoneMsg struct{ err error }
 type disarmMsg struct{}
 type restartedMsg struct {
 	client *harness.Client
@@ -182,6 +183,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.note = ""
 		}
 		return m, nil
+
+	case cancelDoneMsg:
+		if msg.err == nil {
+			// The stream reports the rest: turn/end aborted, then idle.
+			return m, nil
+		}
+		if harness.IsUnknownMethod(msg.err) && m.launch != nil {
+			// Stock composition without the cancel plugin: the old
+			// mechanism, named for what it costs.
+			m.restarting = true
+			m.note = "runtime lacks session/cancel — restarting (context restores from transcript)"
+			m.client.Kill()
+			return m, nil
+		}
+		m.note = ""
+		m.status = "error"
+		return m, commit(render.StyleErr.Render("cancel failed: " + msg.err.Error()))
 
 	case restartedMsg:
 		m.restarting = false
@@ -396,10 +414,12 @@ func (m *model) escape() (tea.Model, tea.Cmd) {
 			}
 		}
 		m.armed = false
-		m.restarting = true
 		m.note = "interrupting…"
-		m.client.Kill()
-		return m, nil
+		// Cancel first: with the dsh-tui plugin loaded the turn settles as
+		// aborted and the session keeps its context. Kill is the labeled
+		// fallback for a stock composition (see cancelDoneMsg).
+		client, id := m.client, m.sessionID
+		return m, func() tea.Msg { return cancelDoneMsg{client.Cancel(id)} }
 	}
 	if m.ta.Value() != "" {
 		m.ta.Reset()

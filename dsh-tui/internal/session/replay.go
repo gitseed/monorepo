@@ -20,6 +20,7 @@ type Replay struct {
 }
 
 func (r *Replay) Prompt(sessionID, text string) (string, error) { return "replay-message", nil }
+func (r *Replay) Cancel(sessionID string) error                 { return nil }
 func (r *Replay) Kill()                                         {}
 func (r *Replay) RespondError(id json.RawMessage, code int, message string) error {
 	return nil

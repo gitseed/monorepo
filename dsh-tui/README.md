@@ -37,9 +37,14 @@ ctrl+j, unambiguous: kitty `map shift+enter send_text all \n`, Ghostty
 S-Enter). alt+enter also inserts a newline where it arrives atomically.
 ctrl+r toggles raw
 NDJSON logging of subsequent events. Esc (= ctrl+c) interrupts a running
-turn on double-press — the composition routes no `session/cancel` (probed:
--32603), so interrupt kills the runtime and relaunches it; the session
-continues. Quit with `/quit`, `/exit`, or `exit` — never a control chord.
+turn on double-press: `plugin/cancel-server.ts` (auto-patched into the
+composition at launch, loaded by absolute path per dsh's out-of-tree
+plugin mechanism) routes `session/cancel` to `agent.cancel({kind:'user'})`
+— the turn settles as aborted and **the session keeps its context**
+(verified: a codeword survives an interrupt with no restore). Without the
+plugin the stock server rejects the method and esc falls back, announced,
+to kill+relaunch with transcript-injected context restore. Quit with
+`/quit`, `/exit`, or `exit` — never a control chord.
 
 Every notification is appended to `<session-root>/tui/<session-id>.ndjson`;
 `-session <id>` replays that transcript through the renderer into scrollback

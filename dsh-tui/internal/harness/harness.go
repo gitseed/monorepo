@@ -31,6 +31,7 @@ type IncomingRequest struct {
 // (*Client) or a canned replay (session.Replay).
 type Conn interface {
 	Prompt(sessionID, text string) (string, error)
+	Cancel(sessionID string) error
 	RespondError(id json.RawMessage, code int, message string) error
 	Kill()
 	NotifCh() <-chan Notification

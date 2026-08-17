@@ -13,6 +13,7 @@ import (
 	"io"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -249,6 +250,21 @@ func (c *Client) Initialize(cwd, provider, model string, maxTokens int) error {
 	}
 	_, err := c.Call("initialize", params, 60*time.Second)
 	return err
+}
+
+// Cancel asks the runtime to cancel the addressed session's running turn
+// (dsh-tui's plugin routes it; the stock server answers unknown-method —
+// detect that with IsUnknownMethod and fall back). The agent survives with
+// its context; the turn settles as aborted.
+func (c *Client) Cancel(sessionID string) error {
+	_, err := c.Call("session/cancel", map[string]any{"sessionId": sessionID}, 10*time.Second)
+	return err
+}
+
+// IsUnknownMethod reports whether err is the runtime's unknown-method
+// rejection — the signal that the composition lacks the cancel plugin.
+func IsUnknownMethod(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "unknown DeepSeek Harness SDK runtime method")
 }
 
 // Prompt queues text into a session's inbox and returns the message id.
