@@ -139,9 +139,12 @@ func eventOf(n Notification) map[string]any {
 
 var (
 	reBold   = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	reItalic = regexp.MustCompile(`\*([^*]+)\*`)
 	reCode   = regexp.MustCompile("`([^`]+)`")
 	reBullet = regexp.MustCompile(`^(\s*)[-*] `)
 	reHeader = regexp.MustCompile(`^#{1,4} `)
+	reFence  = regexp.MustCompile("^\\s*```")
+	reQuote  = regexp.MustCompile(`^\s*> `)
 )
 
 // mdInline applies inline markdown styling per logical line — colors and
@@ -153,14 +156,28 @@ var (
 func mdInline(text string) string {
 	lines := strings.Split(text, "\n")
 	boldStyle := lipgloss.NewStyle().Bold(true)
+	italicStyle := lipgloss.NewStyle().Italic(true)
+	inFence := false
 	for i, line := range lines {
 		switch {
+		case reFence.MatchString(line):
+			// The literal ``` stays in the text (copy fidelity); only dim it.
+			inFence = !inFence
+			line = styleDim.Render(line)
+		case inFence:
+			// No markdown transforms inside a fence — code is code.
+			line = styleCode.Render(line)
+		case reQuote.MatchString(line):
+			line = styleItalic.Render(line)
 		case reHeader.MatchString(line):
 			line = boldStyle.Render(reHeader.ReplaceAllString(line, ""))
 		default:
 			line = reCode.ReplaceAllString(line, styleCode.Render("$1"))
 			line = reBold.ReplaceAllStringFunc(line, func(m string) string {
 				return boldStyle.Render(reBold.FindStringSubmatch(m)[1])
+			})
+			line = reItalic.ReplaceAllStringFunc(line, func(m string) string {
+				return italicStyle.Render(reItalic.FindStringSubmatch(m)[1])
 			})
 			line = reBullet.ReplaceAllString(line, "$1"+styleMark.Render("•")+" ")
 		}
