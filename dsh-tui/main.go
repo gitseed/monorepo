@@ -188,6 +188,13 @@ type reqMsg IncomingRequest
 type diedMsg struct{ err error }
 type promptDoneMsg struct{ err error }
 type disarmMsg struct{}
+
+// pendingPrompt is a prompt awaiting its user/message echo; queued marks
+// ones sent while a turn was already running (steering).
+type pendingPrompt struct {
+	text   string
+	queued bool
+}
 type restartedMsg struct {
 	client *Client
 	err    error
@@ -200,8 +207,8 @@ type uiModel struct {
 
 	ta        textarea.Model
 	spin      spinner.Model
-	streamBuf string // in-flight assistant text, live-region only
-	pending   string // prompt sent but not yet acknowledged by the runtime
+	streamBuf string          // in-flight assistant text, live-region only
+	pending   []pendingPrompt // sent but not yet echoed back by the runtime
 	raw       bool
 	status    string
 	note      string // transient status-bar hint
@@ -305,7 +312,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.note = ""
 			// The user line commits when the runtime echoes it back as a
 			// user/message event; until then it shows in the live region.
-			m.pending = text
+			m.pending = append(m.pending, pendingPrompt{text: text, queued: m.working()})
 			return m, tea.Batch(
 				m.spin.Tick,
 				func() tea.Msg {
@@ -361,7 +368,9 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tokOut += out
 		}
 		if event := eventOf(n); event != nil && event["type"] == "user/message" {
-			m.pending = ""
+			if len(m.pending) > 0 {
+				m.pending = m.pending[1:]
+			}
 		}
 		if delta := chunkDelta(n); delta != "" {
 			m.streamBuf += delta
@@ -386,13 +395,13 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case promptDoneMsg:
 		if msg.err != nil {
 			m.status = "error"
-			m.pending = ""
+			m.pending = nil
 			return m, commit(styleErr.Render("prompt failed: " + msg.err.Error()))
 		}
 		return m, nil
 
 	case diedMsg:
-		m.pending = ""
+		m.pending = nil
 		m.streamBuf = ""
 		if m.restarting {
 			m.status = "restarting"
@@ -467,8 +476,12 @@ func fmtTokens(n int) string {
 // erasable — never committed to the tape), input, status bar.
 func (m *uiModel) View() string {
 	live := ""
-	if m.pending != "" {
-		live += styleUser.Render("❯ ") + styleDim.Render(m.pending) + "\n"
+	for _, p := range m.pending {
+		tag := ""
+		if p.queued {
+			tag = styleDim.Render("  (queued)")
+		}
+		live += styleUser.Render("❯ ") + styleDim.Render(p.text) + tag + "\n"
 	}
 	if m.streamBuf != "" {
 		wrapped := lipgloss.NewStyle().Width(max(m.width, 20)).Render(
