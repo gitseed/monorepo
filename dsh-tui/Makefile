@@ -3,7 +3,7 @@
 .PHONY: build test golden setup demo
 
 build:
-	go build -o dsh-tui .
+	go build -o dsh-tui ./cmd/dsh-tui
 
 test: build
 	go vet ./...

@@ -1,4 +1,4 @@
-package main
+package harness
 
 // Locates the dsh SDK runtime executable. The deepseek-harness-runtime-bin
 // wheel ships a single-file dsh-jsonrpc-agent binary plus its default cordis

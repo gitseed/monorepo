@@ -1,11 +1,16 @@
-package main
-
-// Turns runtime notifications into committed scrollback lines. Hierarchy:
-// user prompts and assistant text are the content; tool activity is a
-// one-line summary; protocol bookkeeping (steps, request headers, titles)
-// is suppressed — ctrl+r's raw log has all of it. Every returned string is
-// logical lines only: styling is inline SGR, never width-wrapping, so the
-// scrollback-commit copy semantics hold.
+// Package render turns runtime notifications into committed scrollback
+// lines. Hierarchy: user prompts and assistant text are the content; tool
+// activity is a one-line summary; protocol bookkeeping (steps, request
+// headers, titles) is suppressed — the raw log has all of it.
+//
+// The contract every function here upholds: output is logical lines only.
+// Styling is inline SGR, never width-wrapping, so the scrollback-commit
+// copy semantics hold (the terminal soft-wraps; selection-copy re-joins).
+// Styles never nest — an inner reset kills any outer color for the rest of
+// the line — so styled spans are self-contained islands in default-fg text.
+// Fence delimiters and interiors are byte-exact; prose lines may apply
+// display transforms (span backticks drop, bullets become •).
+package render
 
 import (
 	"encoding/json"
@@ -14,29 +19,31 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/gitseed/monorepo/dsh-tui/internal/harness"
 )
 
 var (
 	colAccent = lipgloss.AdaptiveColor{Light: "26", Dark: "75"}  // user prompt
 	colMark   = lipgloss.AdaptiveColor{Light: "29", Dark: "115"} // assistant bullet
-	colTool   = lipgloss.AdaptiveColor{Light: "94", Dark: "179"} // tool name
+	ColTool   = lipgloss.AdaptiveColor{Light: "94", Dark: "179"} // tool name
 	colDim    = lipgloss.AdaptiveColor{Light: "245", Dark: "243"}
 	colErr    = lipgloss.AdaptiveColor{Light: "124", Dark: "203"}
 	colCode   = lipgloss.AdaptiveColor{Light: "90", Dark: "216"}
 
-	styleUser   = lipgloss.NewStyle().Foreground(colAccent).Bold(true)
-	styleMark   = lipgloss.NewStyle().Foreground(colMark)
-	styleTool   = lipgloss.NewStyle().Foreground(colTool)
-	styleDim    = lipgloss.NewStyle().Foreground(colDim)
-	styleErr    = lipgloss.NewStyle().Foreground(colErr)
+	StyleUser   = lipgloss.NewStyle().Foreground(colAccent).Bold(true)
+	StyleMark   = lipgloss.NewStyle().Foreground(colMark)
+	StyleTool   = lipgloss.NewStyle().Foreground(ColTool)
+	StyleDim    = lipgloss.NewStyle().Foreground(colDim)
+	StyleErr    = lipgloss.NewStyle().Foreground(colErr)
 	styleCode   = lipgloss.NewStyle().Foreground(colCode)
-	styleItalic = lipgloss.NewStyle().Foreground(colDim).Italic(true)
+	StyleItalic = lipgloss.NewStyle().Foreground(colDim).Italic(true)
 )
 
 // Kept for the raw log and diagnostics lines.
-var styleMeta = styleDim
+var StyleMeta = StyleDim
 
-func compactJSON(v any, max int) string {
+func CompactJSON(v any, max int) string {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("%v", v)
@@ -51,7 +58,7 @@ func compactJSON(v any, max int) string {
 // textContent joins the text blocks of a message event, handling both
 // data.message.content and data.content layouts (same fallback as the
 // Python SDK's final_response).
-func textContent(data map[string]any) string {
+func TextContent(data map[string]any) string {
 	owner := data
 	if msg, ok := data["message"].(map[string]any); ok {
 		owner = msg
@@ -77,8 +84,8 @@ func textContent(data map[string]any) string {
 
 // chunkDelta extracts streaming text from an assistant/chunk notification,
 // or "" — feeds the live-region preview.
-func chunkDelta(n Notification) string {
-	event := eventOf(n)
+func ChunkDelta(n harness.Notification) string {
+	event := EventOf(n)
 	if event == nil || event["type"] != "assistant/chunk" {
 		return ""
 	}
@@ -94,8 +101,8 @@ func chunkDelta(n Notification) string {
 // toolDelta extracts a streaming tool-call fragment from an assistant/chunk
 // tool-call-delta notification; ok is false otherwise. The runtime streams
 // the arguments JSON over several chunks while the model generates it.
-func toolDelta(n Notification) (name, delta string, ok bool) {
-	event := eventOf(n)
+func ToolDelta(n harness.Notification) (name, delta string, ok bool) {
+	event := EventOf(n)
 	if event == nil || event["type"] != "assistant/chunk" {
 		return "", "", false
 	}
@@ -111,8 +118,8 @@ func toolDelta(n Notification) (name, delta string, ok bool) {
 
 // usageFrom extracts per-step token usage from an assistant/chunk usage
 // event; ok is false otherwise.
-func usageFrom(n Notification) (in, out int, ok bool) {
-	event := eventOf(n)
+func UsageFrom(n harness.Notification) (in, out int, ok bool) {
+	event := EventOf(n)
 	if event == nil || event["type"] != "assistant/chunk" {
 		return 0, 0, false
 	}
@@ -127,7 +134,7 @@ func usageFrom(n Notification) (in, out int, ok bool) {
 	return int(i), int(o), true
 }
 
-func eventOf(n Notification) map[string]any {
+func EventOf(n harness.Notification) map[string]any {
 	if n.Method != "session.event" {
 		return nil
 	}
@@ -151,7 +158,7 @@ var (
 // styles don't nest (an inner reset kills any outer color for the rest of
 // the line), so styled spans must be self-contained islands in unstyled
 // text — which is also what keeps the body readable on any theme.
-func mdInline(text string) string {
+func MdInline(text string) string {
 	lines := strings.Split(text, "\n")
 	boldStyle := lipgloss.NewStyle().Bold(true)
 	italicStyle := lipgloss.NewStyle().Italic(true)
@@ -161,12 +168,12 @@ func mdInline(text string) string {
 		case reFence.MatchString(line):
 			// The literal ``` stays in the text (copy fidelity); only dim it.
 			inFence = !inFence
-			line = styleDim.Render(line)
+			line = StyleDim.Render(line)
 		case inFence:
 			// No markdown transforms inside a fence — code is code.
 			line = styleCode.Render(line)
 		case reQuote.MatchString(line):
-			line = styleItalic.Render(line)
+			line = StyleItalic.Render(line)
 		case reHeader.MatchString(line):
 			line = boldStyle.Render(reHeader.ReplaceAllString(line, ""))
 		default:
@@ -177,7 +184,7 @@ func mdInline(text string) string {
 			line = reItalic.ReplaceAllStringFunc(line, func(m string) string {
 				return italicStyle.Render(reItalic.FindStringSubmatch(m)[1])
 			})
-			line = reBullet.ReplaceAllString(line, "$1"+styleMark.Render("•")+" ")
+			line = reBullet.ReplaceAllString(line, "$1"+StyleMark.Render("•")+" ")
 		}
 		lines[i] = line
 	}
@@ -194,7 +201,7 @@ func toolCallLine(data map[string]any) string {
 			if cmd, ok := args["command"].(string); ok {
 				detail = cmd
 			} else {
-				detail = compactJSON(args, 120)
+				detail = CompactJSON(args, 120)
 			}
 		}
 	}
@@ -202,13 +209,13 @@ func toolCallLine(data map[string]any) string {
 	if len(detail) > 120 {
 		detail = detail[:120] + "…"
 	}
-	return styleTool.Render("▸ "+name) + "  " + styleDim.Render(detail)
+	return StyleTool.Render("▸ "+name) + "  " + StyleDim.Render(detail)
 }
 
 // toolResultLines renders up to two dim lines of output plus a count of
 // what was elided.
 func toolResultLines(data map[string]any) string {
-	text := strings.TrimRight(textContent(data), "\n")
+	text := strings.TrimRight(TextContent(data), "\n")
 	isErr := false
 	if msg, ok := data["message"].(map[string]any); ok {
 		if blocks, ok := msg["content"].([]any); ok {
@@ -219,7 +226,7 @@ func toolResultLines(data map[string]any) string {
 					}
 					// tool-result blocks nest their text one level deeper.
 					if inner, ok := block["content"].([]any); ok {
-						text = strings.TrimRight(textContent(map[string]any{"content": inner}), "\n")
+						text = strings.TrimRight(TextContent(map[string]any{"content": inner}), "\n")
 					}
 				}
 			}
@@ -228,9 +235,9 @@ func toolResultLines(data map[string]any) string {
 	if text == "" {
 		return ""
 	}
-	style := styleDim
+	style := StyleDim
 	if isErr {
-		style = styleErr
+		style = StyleErr
 	}
 	lines := strings.Split(text, "\n")
 	shown := lines
@@ -242,26 +249,26 @@ func toolResultLines(data map[string]any) string {
 	}
 	out := strings.Join(shown, "\n")
 	if len(lines) > 2 {
-		out += "\n" + styleDim.Render(fmt.Sprintf("  … +%d lines", len(lines)-2))
+		out += "\n" + StyleDim.Render(fmt.Sprintf("  … +%d lines", len(lines)-2))
 	}
 	return out
 }
 
 // summarize renders one notification as committed lines, or "" to drop it.
-func summarize(n Notification) string {
+func Summarize(n harness.Notification) string {
 	switch n.Method {
 	case "session.status":
 		return "" // lives in the status bar
 	case "subagent.started":
-		return styleDim.Render(fmt.Sprintf("▸ subagent %v", n.Payload["childSessionId"]))
+		return StyleDim.Render(fmt.Sprintf("▸ subagent %v", n.Payload["childSessionId"]))
 	case "subagent.finished":
-		return styleDim.Render(fmt.Sprintf("▪ subagent done %v", n.Payload["childSessionId"]))
+		return StyleDim.Render(fmt.Sprintf("▪ subagent done %v", n.Payload["childSessionId"]))
 	case "session.event":
 	default:
-		return styleDim.Render(fmt.Sprintf("· %s %s", n.Method, compactJSON(n.Payload, 200)))
+		return StyleDim.Render(fmt.Sprintf("· %s %s", n.Method, CompactJSON(n.Payload, 200)))
 	}
 
-	event := eventOf(n)
+	event := EventOf(n)
 	if event == nil {
 		return ""
 	}
@@ -279,13 +286,13 @@ func summarize(n Notification) string {
 		if src, ok := data["source"].(map[string]any); ok && src["kind"] != "user" {
 			return ""
 		}
-		if text := textContent(data); text != "" {
-			return "\n" + styleUser.Render("❯ "+strings.ReplaceAll(text, "\n", "\n  "))
+		if text := TextContent(data); text != "" {
+			return "\n" + StyleUser.Render("❯ "+strings.ReplaceAll(text, "\n", "\n  "))
 		}
 		return ""
 	case "assistant/message":
-		if text := strings.TrimRight(textContent(data), "\n"); text != "" {
-			return "\n" + styleMark.Render("● ") + mdInline(text)
+		if text := strings.TrimRight(TextContent(data), "\n"); text != "" {
+			return "\n" + StyleMark.Render("● ") + MdInline(text)
 		}
 		return "" // tool-call-only message; tool/call renders it
 	case "tool/call":
@@ -295,13 +302,13 @@ func summarize(n Notification) string {
 	case "assistant/chunk":
 		chunk, _ := data["chunk"].(map[string]any)
 		if reason, ok := chunk["reason"].(map[string]any); ok && reason["kind"] == "error" {
-			return styleErr.Render("✗ model error ") + compactJSON(reason, 400)
+			return StyleErr.Render("✗ model error ") + CompactJSON(reason, 400)
 		}
 		return ""
 	case "turn/end":
 		if reason, ok := data["reason"].(map[string]any); ok {
 			if kind, _ := reason["kind"].(string); kind != "completed" && kind != "" {
-				return styleErr.Render(fmt.Sprintf("✗ turn ended: %s ", kind)) + styleDim.Render(compactJSON(reason, 300))
+				return StyleErr.Render(fmt.Sprintf("✗ turn ended: %s ", kind)) + StyleDim.Render(CompactJSON(reason, 300))
 			}
 		}
 		return ""
@@ -309,6 +316,6 @@ func summarize(n Notification) string {
 		"session/title", "agent/inbox/spliced":
 		return ""
 	default:
-		return styleDim.Render(fmt.Sprintf("· %s %s", typ, compactJSON(data, 160)))
+		return StyleDim.Render(fmt.Sprintf("· %s %s", typ, CompactJSON(data, 160)))
 	}
 }

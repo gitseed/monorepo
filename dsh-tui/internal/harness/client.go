@@ -1,4 +1,4 @@
-package main
+package harness
 
 // Minimal JSON-RPC 2.0 client for the dsh SDK runtime: newline-delimited
 // messages over the subprocess's stdio. Mirrors the Python SDK's
@@ -16,17 +16,6 @@ import (
 	"sync"
 	"time"
 )
-
-type Notification struct {
-	Method  string
-	Payload map[string]any
-}
-
-type IncomingRequest struct {
-	ID      json.RawMessage
-	Method  string
-	Payload map[string]any
-}
 
 type rpcError struct {
 	Code    int    `json:"code"`
