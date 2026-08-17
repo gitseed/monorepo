@@ -107,6 +107,14 @@ func main() {
 	// managed/pre-wrapped repainting.
 	m := newModel(c, sessionID, *model)
 	m.launch = lc
+	if lc != nil {
+		sr, _ := filepath.Abs(*sessionRoot)
+		trans := newTranscript(sr, sessionID)
+		if *session != "" {
+			renderResume(trans.path)
+		}
+		m.trans = trans
+	}
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -223,9 +231,10 @@ type uiModel struct {
 	turnStart time.Time
 	width     int
 
-	launch     *launcher // nil in replay mode
-	armed      bool      // first esc pressed, second interrupts
-	restarting bool      // runtime killed on purpose, relaunch under way
+	launch     *launcher   // nil in replay mode
+	trans      *transcript // nil in replay mode
+	armed      bool        // first esc pressed, second interrupts
+	restarting bool        // runtime killed on purpose, relaunch under way
 }
 
 func newModel(client conn, sessionID, modelName string) *uiModel {
@@ -357,6 +366,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case notifMsg:
 		m.events++
 		n := Notification(msg)
+		m.trans.append(n)
 		cmds := []tea.Cmd{m.listen()}
 		// Single-session UI: no session filter, so replayed and resumed
 		// streams drive the status too.
