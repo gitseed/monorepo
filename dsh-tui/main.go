@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
@@ -251,6 +252,7 @@ func newModel(client conn, sessionID, modelName string) *uiModel {
 	ta.FocusedStyle.Prompt = styleUser
 	ta.BlurredStyle.Prompt = styleDim
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.Cursor.SetMode(cursor.CursorStatic)
 	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot))
 	sp.Style = lipgloss.NewStyle().Foreground(colTool)
 	return &uiModel{
@@ -282,7 +284,7 @@ func pump(p *tea.Program, c conn) {
 }
 
 func (m *uiModel) Init() tea.Cmd {
-	return textarea.Blink
+	return nil
 }
 
 // commit finalizes a logical line into native scrollback, unwrapped — the
