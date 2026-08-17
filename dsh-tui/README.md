@@ -25,9 +25,22 @@ DEEPSEEK_BASE_URL=https://openrouter.ai/api/v1 \
 ./dsh-tui -cordis minimal.cordis.yml -model qwen/qwen3.8-max
 ```
 
-Enter sends, ctrl+j newline, ctrl+r toggles the raw NDJSON event view,
-ctrl+c quits. `-probe -prompt '...'` runs one headless turn and dumps the
-notification stream instead (how the protocol below was captured).
+Enter sends, ctrl+j newline, ctrl+r toggles raw NDJSON logging of
+subsequent events, ctrl+c quits. `-probe -prompt '...'` runs one headless
+turn and dumps the notification stream instead (how the protocol below was
+captured).
+
+## Rendering: finalization emission
+
+Inline renderer, no alt screen. Streaming text lives in an erasable live
+region (pre-wrapped preview + status + input) and is never committed while
+in flight; at finalization the logical lines are emitted once into the
+normal-screen flow, unwrapped, autowrap on (tea.Println). The terminal
+soft-wraps them, so native selection-copy re-joins rows and committed lines
+reflow on resize — the design from oh-my-pi#7879, which Bubble Tea's
+inline renderer + Println maps onto directly. Verified at a 60-col pty:
+committed replies appear in the byte stream as contiguous >200-char
+logical lines with zero DECAWM-off writes.
 
 `minimal.cordis.yml` is vendored from dsh's `examples/jsonrpc-agent`; it takes
 arbitrary model ids via `DSH_MODEL` against any OpenAI-compatible

@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -84,8 +83,14 @@ func main() {
 		return
 	}
 
+	// Inline renderer, deliberately no alt screen: finalized lines are
+	// committed to native scrollback unwrapped (tea.Println) so the
+	// terminal soft-wraps them and native selection-copy re-joins them
+	// (the finalization-emission design from oh-my-pi#7879). Only the
+	// live region below — streaming preview, status, input — is
+	// managed/pre-wrapped repainting.
 	m := newModel(client, sessionID, *model)
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -138,17 +143,12 @@ type uiModel struct {
 	sessionID string
 	modelName string
 
-	vp     viewport.Model
-	ta     textarea.Model
-	lines  []string
-	rawLog []string
-	raw    bool
-	status string
-	events int
-	ready  bool
-	fatal  error
-	width  int
-	height int
+	ta        textarea.Model
+	streamBuf string // in-flight assistant text, live-region only
+	raw       bool
+	status    string
+	events    int
+	width     int
 }
 
 func newModel(client *Client, sessionID, modelName string) *uiModel {
@@ -183,39 +183,20 @@ func (m *uiModel) Init() tea.Cmd {
 	return tea.Batch(textarea.Blink, m.listen())
 }
 
-func (m *uiModel) push(line string) {
+// commit finalizes a logical line into native scrollback, unwrapped — the
+// terminal soft-wraps it, so native selection-copy re-joins the rows.
+func commit(line string) tea.Cmd {
 	if line == "" {
-		return
+		return nil
 	}
-	m.lines = append(m.lines, line)
-	m.refresh()
-}
-
-func (m *uiModel) refresh() {
-	content := m.lines
-	if m.raw {
-		content = m.rawLog
-	}
-	m.vp.SetContent(lipgloss.NewStyle().Width(m.vp.Width).Render(strings.Join(content, "\n")))
-	m.vp.GotoBottom()
+	return tea.Println(line)
 }
 
 func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-		// A pty can report zero size before its first real resize; a
-		// negative height panics the viewport.
-		vpHeight := max(msg.Height-m.ta.Height()-3, 1)
-		vpWidth := max(msg.Width, 1)
-		if !m.ready {
-			m.vp = viewport.New(vpWidth, vpHeight)
-			m.ready = true
-		} else {
-			m.vp.Width, m.vp.Height = vpWidth, vpHeight
-		}
+		m.width = msg.Width
 		m.ta.SetWidth(max(msg.Width-2, 1))
-		m.refresh()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -224,7 +205,6 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+r":
 			m.raw = !m.raw
-			m.refresh()
 			return m, nil
 		case "ctrl+j":
 			m.ta.InsertString("\n")
@@ -235,69 +215,85 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.ta.Reset()
-			m.push(styleUser.Render("you ▸ ") + text)
 			m.status = "working"
-			return m, func() tea.Msg {
-				_, err := m.client.Prompt(m.sessionID, text)
-				return promptDoneMsg{err}
-			}
+			return m, tea.Batch(
+				commit(styleUser.Render("you ▸ ")+text),
+				func() tea.Msg {
+					_, err := m.client.Prompt(m.sessionID, text)
+					return promptDoneMsg{err}
+				},
+			)
 		}
 
 	case notifMsg:
 		m.events++
 		n := Notification(msg)
-		m.rawLog = append(m.rawLog, compactJSON(map[string]any{"method": n.Method, "params": n.Payload}, 4000))
+		cmds := []tea.Cmd{m.listen()}
 		if n.Method == "session.status" && n.Payload["sessionId"] == m.sessionID {
 			if s, ok := n.Payload["status"].(string); ok {
 				m.status = s
 			}
 		}
-		m.push(summarize(n))
-		if m.raw {
-			m.refresh()
+		if delta := chunkDelta(n); delta != "" {
+			m.streamBuf += delta
 		}
-		return m, m.listen()
+		if line := summarize(n); line != "" {
+			// summarize returns non-"" for assistant/message and turn/end
+			// (among others): the stream is settled, drop the preview.
+			m.streamBuf = ""
+			cmds = append(cmds, commit(line))
+		}
+		if m.raw {
+			cmds = append(cmds, commit(styleMeta.Render(
+				compactJSON(map[string]any{"method": n.Method, "params": n.Payload}, 4000))))
+		}
+		return m, tea.Batch(cmds...)
 
 	case reqMsg:
-		m.push(styleErr.Render(fmt.Sprintf("? incoming request %s ", msg.Method)) + compactJSON(msg.Payload, 300))
 		m.client.RespondError(msg.ID, -32601, "dsh-tui spike: client-side method not supported")
-		return m, m.listen()
+		return m, tea.Batch(m.listen(),
+			commit(styleErr.Render(fmt.Sprintf("? incoming request %s ", msg.Method))+compactJSON(msg.Payload, 300)))
 
 	case promptDoneMsg:
 		if msg.err != nil {
 			m.status = "error"
-			m.push(styleErr.Render("prompt failed: " + msg.err.Error()))
+			return m, commit(styleErr.Render("prompt failed: " + msg.err.Error()))
 		}
 		return m, nil
 
 	case diedMsg:
-		m.fatal = msg.err
-		m.push(styleErr.Render("runtime died: " + msg.err.Error()))
 		m.status = "dead"
-		return m, nil
+		return m, commit(styleErr.Render("runtime died: " + msg.err.Error()))
 	}
 
-	var cmds []tea.Cmd
 	var cmd tea.Cmd
 	m.ta, cmd = m.ta.Update(msg)
-	cmds = append(cmds, cmd)
-	m.vp, cmd = m.vp.Update(msg)
-	cmds = append(cmds, cmd)
-	return m, tea.Batch(cmds...)
+	return m, cmd
 }
 
 var styleStatusBar = lipgloss.NewStyle().Faint(true)
 
+const previewRows = 8
+
+// View is the live region: streaming preview (pre-wrapped, erasable — never
+// committed to the tape), status bar, input.
 func (m *uiModel) View() string {
-	if !m.ready {
-		return "starting…"
+	preview := ""
+	if m.streamBuf != "" {
+		wrapped := lipgloss.NewStyle().Width(max(m.width, 20)).Render(
+			styleAssistant.Render("dsh ▸ ") + m.streamBuf)
+		rows := strings.Split(wrapped, "\n")
+		if len(rows) > previewRows {
+			rows = rows[len(rows)-previewRows:]
+		}
+		preview = strings.Join(rows, "\n") + "\n"
 	}
 	mode := ""
 	if m.raw {
 		mode = "  [raw]"
 	}
 	bar := styleStatusBar.Render(fmt.Sprintf(
-		" %s  ·  %s  ·  %s  ·  %d events%s  ·  ctrl+r raw view",
+		" %s  ·  %s  ·  %s  ·  %d events%s  ·  ctrl+r raw log",
 		m.sessionID, m.modelName, m.status, m.events, mode))
-	return m.vp.View() + "\n" + bar + "\n" + m.ta.View()
+	return preview + bar + "\n" + m.ta.View()
 }

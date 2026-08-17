@@ -59,6 +59,25 @@ func textContent(data map[string]any) string {
 	return strings.Join(parts, "")
 }
 
+// chunkDelta extracts streaming text from an assistant/chunk notification,
+// or "" — feeds the live-region preview.
+func chunkDelta(n Notification) string {
+	if n.Method != "session.event" {
+		return ""
+	}
+	event, ok := n.Payload["event"].(map[string]any)
+	if !ok || event["type"] != "assistant/chunk" {
+		return ""
+	}
+	data, _ := event["data"].(map[string]any)
+	chunk, _ := data["chunk"].(map[string]any)
+	if chunk["type"] != "text-delta" {
+		return ""
+	}
+	text, _ := chunk["text"].(string)
+	return text
+}
+
 // summarize renders one notification, or returns "" to drop it.
 func summarize(n Notification) string {
 	switch n.Method {
