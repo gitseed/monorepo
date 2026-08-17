@@ -35,8 +35,10 @@ capture=$(mktemp "${TMPDIR:-/tmp}/dsh-tui-capture.XXXXXX")
 # freeze ignores SGR 39/49 (default fg/bg); normalize them to full resets
 # so the render matches what a real terminal shows.
 tmux capture-pane -e -p -t "$SESSION" | perl -pe 's/\e\[39m/\e[0m/g; s/\e\[49m/\e[0m/g' > "$capture"
-if command -v freeze >/dev/null; then
-    freeze "$capture" -o "$OUT" >/dev/null
+# freeze renders nicer frames but intermittently hangs (font path); give
+# it 15s then fall back to the local renderer.
+if command -v freeze >/dev/null && perl -e 'alarm 15; exec @ARGV' freeze "$capture" -o "$OUT" >/dev/null 2>&1; then
+    :
 else
     "$DIR/.venv/bin/python" "$DIR/scripts/ansi2png.py" "$capture" "$OUT" "$COLS"
 fi

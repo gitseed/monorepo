@@ -217,8 +217,10 @@ type uiModel struct {
 	events    int
 	tokIn     int
 	tokOut    int
-	ctxWindow int // from request/context
-	ctxUsed   int // latest step's input+output tokens ~ occupancy
+	ctxWindow int    // from request/context
+	ctxUsed   int    // latest step's input+output tokens ~ occupancy
+	title     string // from session/title
+	turnStart time.Time
 	width     int
 
 	launch     *launcher // nil in replay mode
@@ -363,6 +365,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				wasWorking := m.working()
 				m.status = s
 				if !wasWorking && m.working() {
+					m.turnStart = time.Now()
 					cmds = append(cmds, m.spin.Tick)
 				}
 			}
@@ -371,6 +374,13 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tokIn += in
 			m.tokOut += out
 			m.ctxUsed = in + out
+		}
+		if event := eventOf(n); event != nil && event["type"] == "session/title" {
+			if data, ok := event["data"].(map[string]any); ok {
+				if t, ok := data["title"].(string); ok && t != "" {
+					m.title = t
+				}
+			}
 		}
 		if event := eventOf(n); event != nil && event["type"] == "request/context" {
 			if data, ok := event["data"].(map[string]any); ok {
@@ -536,6 +546,9 @@ func (m *uiModel) View() string {
 	}
 	// Styles don't nest: render every segment separately or the glyph's
 	// color bleeds across the whole bar.
+	if m.working() && !m.turnStart.IsZero() {
+		state += fmt.Sprintf(" %ds", int(time.Since(m.turnStart).Seconds()))
+	}
 	parts := []string{glyph + " " + styleDim.Render(state), styleDim.Render(m.modelName)}
 	if m.tokIn+m.tokOut > 0 {
 		parts = append(parts, styleDim.Render(fmt.Sprintf("↑%s ↓%s", fmtTokens(m.tokIn), fmtTokens(m.tokOut))))
@@ -544,8 +557,11 @@ func (m *uiModel) View() string {
 		parts = append(parts, styleDim.Render(fmt.Sprintf("ctx %s/%s", fmtTokens(m.ctxUsed), fmtTokens(m.ctxWindow))))
 	}
 	short := m.sessionID
-	if len(short) > 16 {
-		short = short[:16] + "…"
+	if m.title != "" {
+		short = m.title
+	}
+	if len(short) > 28 {
+		short = short[:28] + "…"
 	}
 	parts = append(parts, styleDim.Render(short))
 	if m.raw {
