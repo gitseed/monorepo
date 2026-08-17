@@ -92,6 +92,7 @@ services {
              // endpoint from this; the proxy front for openrouter.ai
              // injects the real credential in flight.
              "DEEPSEEK_BASE_URL=https://openrouter.ai/api/v1",
+             "DSH_TUI_CANCEL_PLUGIN=/usr/local/share/dsh-tui/cancel-server.ts",
              // Never export session logs off-box (telemetry is default-
              // off upstream; this pins it).
              "DSH_TELEMETRY_DISABLED=1")

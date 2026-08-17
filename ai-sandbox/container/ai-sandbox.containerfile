@@ -71,6 +71,12 @@ RUN pip3 install "deepseek-harness-sdk==${DSH_VERSION/-rc./rc}" \
 ENV DSH_RUNTIME_BIN=/usr/local/bin/dsh-jsonrpc-agent
 COPY --from=dsh-tui-build /out/dsh-tui /usr/local/bin/dsh-tui
 COPY dsh/tui.cordis.yml /root/.dsh/tui.cordis.yml
+# session/cancel routing plugin: dsh-tui patches it into the composition at
+# launch so esc cancels the turn in place (context survives) instead of
+# restarting the runtime. Loaded by absolute path per dsh's out-of-tree
+# plugin mechanism; its imports resolve inside the runtime exe's snapshot
+# (DSH_TUI_SNAPSHOT_BASE overrides if a build relocates it).
+COPY --from=dsh-tui-src plugin/cancel-server.ts /usr/local/share/dsh-tui/cancel-server.ts
 
 # pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
