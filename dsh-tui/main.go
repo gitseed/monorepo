@@ -325,6 +325,17 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch text {
 			case "/quit", "/exit", "exit", "quit":
 				return m, tea.Quit
+			case "/help":
+				m.ta.Reset()
+				return m, commit(styleDim.Render(strings.Join([]string{
+					"",
+					"enter    send (mid-turn = steering, queues into the inbox)",
+					"ctrl+j   newline",
+					"esc esc  interrupt the running turn (ctrl+c = esc)",
+					"ctrl+r   raw NDJSON logging of subsequent events",
+					"/quit    exit (also /exit, exit)",
+					"/help    this",
+				}, "\n")))
 			}
 			if strings.HasPrefix(text, "/") {
 				m.note = "unknown command " + text
