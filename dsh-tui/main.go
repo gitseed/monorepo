@@ -207,6 +207,8 @@ type uiModel struct {
 
 	ta        textarea.Model
 	spin      spinner.Model
+	toolName  string          // in-flight tool call, live-region only
+	toolBuf   string          // its arguments JSON, streamed
 	streamBuf string          // in-flight assistant text, live-region only
 	pending   []pendingPrompt // sent but not yet echoed back by the runtime
 	raw       bool
@@ -385,10 +387,16 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if delta := chunkDelta(n); delta != "" {
 			m.streamBuf += delta
 		}
+		if name, delta, ok := toolDelta(n); ok {
+			m.toolName = name
+			m.toolBuf += delta
+		}
 		if line := summarize(n); line != "" {
-			// summarize returns non-"" for assistant/message and turn/end
-			// errors (among others): the stream is settled, drop the preview.
+			// summarize returns non-"" for assistant/message, tool/call and
+			// turn/end errors (among others): the stream is settled, drop
+			// the previews.
 			m.streamBuf = ""
+			m.toolBuf, m.toolName = "", ""
 			cmds = append(cmds, commit(line))
 		}
 		if m.raw {
@@ -413,6 +421,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case diedMsg:
 		m.pending = nil
 		m.streamBuf = ""
+		m.toolBuf, m.toolName = "", ""
 		if m.restarting {
 			m.status = "restarting"
 			launch := m.launch
@@ -495,6 +504,14 @@ func (m *uiModel) View() string {
 			tag = styleDim.Render("  (queued)")
 		}
 		live += styleUser.Render("❯ ") + styleDim.Render(p.text) + tag + "\n"
+	}
+	if m.toolName != "" {
+		// The arguments JSON building up live, tail-clamped to one row.
+		args := strings.ReplaceAll(m.toolBuf, "\n", " ")
+		if avail := max(m.width-len(m.toolName)-6, 10); len(args) > avail {
+			args = "…" + args[len(args)-avail:]
+		}
+		live += styleTool.Render("▸ "+m.toolName+" ") + styleDim.Render(args) + "\n"
 	}
 	if m.streamBuf != "" {
 		wrapped := lipgloss.NewStyle().Width(max(m.width, 20)).Render(

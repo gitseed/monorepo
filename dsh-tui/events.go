@@ -93,6 +93,24 @@ func chunkDelta(n Notification) string {
 	return text
 }
 
+// toolDelta extracts a streaming tool-call fragment from an assistant/chunk
+// tool-call-delta notification; ok is false otherwise. The runtime streams
+// the arguments JSON over several chunks while the model generates it.
+func toolDelta(n Notification) (name, delta string, ok bool) {
+	event := eventOf(n)
+	if event == nil || event["type"] != "assistant/chunk" {
+		return "", "", false
+	}
+	data, _ := event["data"].(map[string]any)
+	chunk, _ := data["chunk"].(map[string]any)
+	if chunk["type"] != "tool-call-delta" {
+		return "", "", false
+	}
+	name, _ = chunk["name"].(string)
+	delta, _ = chunk["argumentsDelta"].(string)
+	return name, delta, true
+}
+
 // usageFrom extracts per-step token usage from an assistant/chunk usage
 // event; ok is false otherwise.
 func usageFrom(n Notification) (in, out int, ok bool) {
