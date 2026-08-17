@@ -350,6 +350,11 @@ func (m *model) notified(n harness.Notification) (tea.Model, tea.Cmd) {
 				m.turnStart = time.Now()
 				cmds = append(cmds, m.spin.Tick)
 			}
+			// "interrupting…" is transient: the cancellation is done when
+			// the turn stops being a turn.
+			if wasWorking && !m.working() && m.note == "interrupting…" {
+				m.note = ""
+			}
 		}
 	}
 	if in, out, ok := render.UsageFrom(n); ok {
