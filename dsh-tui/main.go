@@ -215,6 +215,8 @@ type uiModel struct {
 	events    int
 	tokIn     int
 	tokOut    int
+	ctxWindow int // from request/context
+	ctxUsed   int // latest step's input+output tokens ~ occupancy
 	width     int
 
 	launch     *launcher // nil in replay mode
@@ -366,6 +368,14 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if in, out, ok := usageFrom(n); ok {
 			m.tokIn += in
 			m.tokOut += out
+			m.ctxUsed = in + out
+		}
+		if event := eventOf(n); event != nil && event["type"] == "request/context" {
+			if data, ok := event["data"].(map[string]any); ok {
+				if w, ok := data["contextWindow"].(float64); ok {
+					m.ctxWindow = int(w)
+				}
+			}
 		}
 		if event := eventOf(n); event != nil && event["type"] == "user/message" {
 			if len(m.pending) > 0 {
@@ -463,6 +473,9 @@ func (m *uiModel) working() bool {
 }
 
 func fmtTokens(n int) string {
+	if n >= 1000000 {
+		return fmt.Sprintf("%.0fM", float64(n)/1000000)
+	}
 	if n >= 10000 {
 		return fmt.Sprintf("%.0fk", float64(n)/1000)
 	}
@@ -509,6 +522,9 @@ func (m *uiModel) View() string {
 	parts := []string{glyph + " " + styleDim.Render(state), styleDim.Render(m.modelName)}
 	if m.tokIn+m.tokOut > 0 {
 		parts = append(parts, styleDim.Render(fmt.Sprintf("↑%s ↓%s", fmtTokens(m.tokIn), fmtTokens(m.tokOut))))
+	}
+	if m.ctxWindow > 0 && m.ctxUsed > 0 {
+		parts = append(parts, styleDim.Render(fmt.Sprintf("ctx %s/%s", fmtTokens(m.ctxUsed), fmtTokens(m.ctxWindow))))
 	}
 	short := m.sessionID
 	if len(short) > 16 {
