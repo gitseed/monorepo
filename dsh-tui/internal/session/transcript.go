@@ -100,10 +100,7 @@ func RestoreContext(path string) (string, error) {
 		case "tool/call":
 			name, _ := data["name"].(string)
 			args, _ := data["arguments"].(string)
-			if len(args) > 200 {
-				args = args[:200] + "…"
-			}
-			parts = append(parts, "assistant ran tool "+name+" "+args)
+			parts = append(parts, "assistant ran tool "+name+" "+render.TruncateRunes(args, 200))
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -115,7 +112,7 @@ func RestoreContext(path string) (string, error) {
 	history := strings.Join(parts, "\n\n")
 	const maxRestore = 16000
 	if len(history) > maxRestore {
-		history = "(earlier history truncated)\n…" + history[len(history)-maxRestore:]
+		history = "(earlier history truncated)\n…" + render.TailRunes(history, maxRestore)
 	}
 	return "<session-restore>\nThe runtime restarted; your in-context memory of this session was lost. " +
 		"This is the conversation so far, restored from the client's transcript:\n\n" +

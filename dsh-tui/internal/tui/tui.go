@@ -33,14 +33,16 @@ type Options struct {
 	NeedsRestore bool // resumed session: inject transcript context on next prompt
 }
 
-// Run blocks until the UI exits.
-func Run(o Options) error {
+// Run blocks until the UI exits. It returns the conn the UI ended on —
+// after an interrupt-triggered restart that is a different client than the
+// caller passed in, and the caller owns shutting it down.
+func Run(o Options) (harness.Conn, error) {
 	m := newModel(o)
 	p := tea.NewProgram(m)
 	m.program = p
 	go pump(p, o.Conn)
 	_, err := p.Run()
-	return err
+	return m.client, err
 }
 
 type notifMsg harness.Notification
@@ -189,11 +191,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The stream reports the rest: turn/end aborted, then idle.
 			return m, nil
 		}
-		if harness.IsUnknownMethod(msg.err) && m.launch != nil {
-			// Stock composition without the cancel plugin: the old
-			// mechanism, named for what it costs.
+		if m.launch != nil {
+			// Cancel failed for any reason: escalate to the old mechanism,
+			// named for what it costs. Unknown-method means a stock
+			// composition; anything else means a wedged runtime — either
+			// way the user asked for an interrupt and gets one.
 			m.restarting = true
-			m.note = "runtime lacks session/cancel — restarting (context restores from transcript)"
+			if harness.IsUnknownMethod(msg.err) {
+				m.note = "runtime lacks session/cancel — restarting (context restores from transcript)"
+			} else {
+				m.note = "cancel failed (" + render.TruncateRunes(msg.err.Error(), 60) + ") — restarting instead"
+			}
 			m.client.Kill()
 			return m, nil
 		}
@@ -374,7 +382,20 @@ func (m *model) notified(n harness.Notification) (tea.Model, tea.Cmd) {
 				m.ctxWindow = int(w)
 			}
 		case "user/message":
-			if len(m.pending) > 0 {
+			// Defensive mirror of Summarize's filter: only real user
+			// echoes dequeue the pending preview (tool-role user messages
+			// haven't been observed as user/message events, but a
+			// composition that emits them must not eat queued prompts).
+			fromTool := false
+			if msg, ok := data["message"].(map[string]any); ok {
+				if src, ok := msg["source"].(map[string]any); ok && src["kind"] == "tool" {
+					fromTool = true
+				}
+			}
+			if src, ok := data["source"].(map[string]any); ok && src["kind"] != "user" {
+				fromTool = true
+			}
+			if !fromTool && len(m.pending) > 0 {
 				m.pending = m.pending[1:]
 			}
 		}
@@ -512,9 +533,7 @@ func (m *model) statusBar() string {
 	if m.title != "" {
 		short = m.title
 	}
-	if len(short) > 28 {
-		short = short[:28] + "…"
-	}
+	short = render.TruncateRunes(short, 28)
 	parts = append(parts, render.StyleDim.Render(short))
 	if m.raw {
 		parts = append(parts, render.StyleDim.Render("raw log on"))

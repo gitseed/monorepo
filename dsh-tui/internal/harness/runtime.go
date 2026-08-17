@@ -86,9 +86,16 @@ func PatchComposition(cordisPath, pluginPath, dir string) (string, error) {
 		return "", nil
 	}
 	patched := strings.Replace(string(content), stockRow, "name: '"+pluginPath+"'", 1)
-	out := filepath.Join(dir, "composition-cancel.yml")
-	if err := os.WriteFile(out, []byte(patched), 0o644); err != nil {
+	f, err := os.CreateTemp(dir, "dsh-tui-composition-*.yml")
+	if err != nil {
 		return "", fmt.Errorf("write patched composition: %w", err)
 	}
-	return out, nil
+	if _, err := f.Write([]byte(patched)); err != nil {
+		f.Close()
+		return "", fmt.Errorf("write patched composition: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("write patched composition: %w", err)
+	}
+	return f.Name(), nil
 }

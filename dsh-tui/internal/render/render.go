@@ -43,16 +43,31 @@ var (
 // Kept for the raw log and diagnostics lines.
 var StyleMeta = StyleDim
 
+// TruncateRunes shortens s to at most max runes, appending … — byte
+// slicing would split multi-byte runes into mojibake.
+func TruncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
+}
+
+// TailRunes keeps the last max runes of s, rune-safe.
+func TailRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[len(r)-max:])
+}
+
 func CompactJSON(v any, max int) string {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("%v", v)
 	}
-	s := string(b)
-	if len(s) > max {
-		s = s[:max] + "…"
-	}
-	return s
+	return TruncateRunes(string(b), max)
 }
 
 // textContent joins the text blocks of a message event, handling both
@@ -207,7 +222,7 @@ func toolCallLine(data map[string]any) string {
 	}
 	detail = strings.ReplaceAll(detail, "\n", " ⏎ ")
 	if len(detail) > 120 {
-		detail = detail[:120] + "…"
+		detail = TruncateRunes(detail, 120)
 	}
 	return StyleTool.Render("▸ "+name) + "  " + StyleDim.Render(detail)
 }

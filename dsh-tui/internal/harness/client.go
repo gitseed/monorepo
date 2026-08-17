@@ -103,12 +103,18 @@ func (c *Client) readLoop(stdout io.Reader) {
 		}
 		var msg wireMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
+			c.stderrMu.Lock()
+			c.stderrTail = append(c.stderrTail, fmt.Sprintf("dsh-tui: skipped unparseable protocol line: %.80s", line))
+			c.stderrMu.Unlock()
 			continue
 		}
 		c.dispatch(&msg)
 	}
 	err := scanner.Err()
 	c.failPending(fmt.Errorf("runtime stdout closed: %w (stderr tail: %s)", err, c.StderrTail()))
+	// Reap the subprocess on every death path (kill, crash, EOF) so no
+	// zombie outlives us; Close's own Wait tolerates the double reap.
+	go c.cmd.Wait()
 	select {
 	case c.Died <- fmt.Errorf("runtime exited: %s", c.StderrTail()):
 	default:
