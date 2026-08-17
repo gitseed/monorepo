@@ -28,7 +28,27 @@ DEEPSEEK_BASE_URL=https://openrouter.ai/api/v1 \
 Enter sends, ctrl+j newline, ctrl+r toggles raw NDJSON logging of
 subsequent events, ctrl+c quits. `-probe -prompt '...'` runs one headless
 turn and dumps the notification stream instead (how the protocol below was
-captured).
+captured). `-replay file.ndjson` feeds a captured stream through the UI
+with no runtime or model — deterministic frames for styling work.
+
+## Screenshot harness
+
+`scripts/screenshot.bash out.png -- ./dsh-tui -replay testdata/demo.ndjson`
+runs the TUI in a fixed-size tmux pane, captures the resolved grid with
+colors, and renders it to PNG (freeze, falling back to
+`scripts/ansi2png.py`) — how an agent looks at its own frames. `SEND`
+injects keystrokes, `COLS`/`ROWS`/`WAIT` size and settle the pane. Caveat:
+freeze ignores SGR 39/49, so the script normalizes them to full resets.
+
+## Styling rules
+
+Committed lines style with inline SGR only, never width-wrapping, so the
+scrollback-commit copy semantics hold. lipgloss styles don't nest (an
+inner reset kills the outer color for the rest of the line), so assistant
+body text stays the terminal's default foreground and styled spans (code,
+bold, bullets, headers) are self-contained islands. Consequence of
+terminal-side wrapping: long lines break at the exact column, mid-word —
+that's the copy-correctness tradeoff, not a bug.
 
 ## Rendering: finalization emission
 

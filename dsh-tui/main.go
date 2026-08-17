@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -34,53 +35,64 @@ func main() {
 	workspace := flag.String("workspace", ".", "agent workspace directory")
 	sessionRoot := flag.String("session-root", ".dsh-sessions", "JSONL session directory")
 	session := flag.String("session", "", "session id to resume (default: new)")
+	replay := flag.String("replay", "", "replay a captured -probe NDJSON stream instead of launching a runtime")
 	flag.Parse()
-
-	rt, err := ResolveRuntime()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	ws, err := filepath.Abs(*workspace)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	sr, _ := filepath.Abs(*sessionRoot)
-	config := *cordis
-	if config == "" {
-		config = envOr("DSH_CORDIS_CONFIG", rt.DefaultConfig)
-	}
-	config, _ = filepath.Abs(config)
-
-	env := []string{
-		"DSH_CORDIS_CONFIG=" + config,
-		"DSH_CWD=" + ws,
-		"DSH_SESSION_ROOT=" + sr,
-		"DSH_MODEL=" + *model,
-	}
-	client, err := StartClient([]string{rt.Bin}, ws, env)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to launch runtime:", err)
-		os.Exit(1)
-	}
-	defer client.Close()
-	if err := client.Initialize(ws, *provider, *model, 0); err != nil {
-		fmt.Fprintln(os.Stderr, "initialize failed:", err)
-		os.Exit(1)
-	}
 
 	sessionID := *session
 	if sessionID == "" {
 		sessionID = newSessionID()
 	}
 
-	if *probe {
-		if err := runProbe(client, sessionID, *prompt); err != nil {
+	var c conn
+	if *replay != "" {
+		rc, err := startReplay(*replay)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		return
+		c = rc
+	} else {
+		rt, err := ResolveRuntime()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		ws, err := filepath.Abs(*workspace)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		sr, _ := filepath.Abs(*sessionRoot)
+		config := *cordis
+		if config == "" {
+			config = envOr("DSH_CORDIS_CONFIG", rt.DefaultConfig)
+		}
+		config, _ = filepath.Abs(config)
+
+		env := []string{
+			"DSH_CORDIS_CONFIG=" + config,
+			"DSH_CWD=" + ws,
+			"DSH_SESSION_ROOT=" + sr,
+			"DSH_MODEL=" + *model,
+		}
+		client, err := StartClient([]string{rt.Bin}, ws, env)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "failed to launch runtime:", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+		if err := client.Initialize(ws, *provider, *model, 0); err != nil {
+			fmt.Fprintln(os.Stderr, "initialize failed:", err)
+			os.Exit(1)
+		}
+		if *probe {
+			if err := runProbe(client, sessionID, *prompt); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			return
+		}
+		c = client
 	}
 
 	// Inline renderer, deliberately no alt screen: finalized lines are
@@ -89,11 +101,21 @@ func main() {
 	// (the finalization-emission design from oh-my-pi#7879). Only the
 	// live region below — streaming preview, status, input — is
 	// managed/pre-wrapped repainting.
-	m := newModel(client, sessionID, *model)
+	m := newModel(c, sessionID, *model)
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// conn is what the UI needs from a session backend: the real jsonrpc
+// runtime (Client) or a canned replay (replayConn).
+type conn interface {
+	Prompt(sessionID, text string) (string, error)
+	RespondError(id json.RawMessage, code int, message string) error
+	NotifCh() <-chan Notification
+	ReqCh() <-chan IncomingRequest
+	DiedCh() <-chan error
 }
 
 func envOr(key, fallback string) string {
@@ -139,29 +161,40 @@ type diedMsg struct{ err error }
 type promptDoneMsg struct{ err error }
 
 type uiModel struct {
-	client    *Client
+	client    conn
 	sessionID string
 	modelName string
 
 	ta        textarea.Model
+	spin      spinner.Model
 	streamBuf string // in-flight assistant text, live-region only
+	pending   string // prompt sent but not yet acknowledged by the runtime
 	raw       bool
 	status    string
 	events    int
+	tokIn     int
+	tokOut    int
 	width     int
 }
 
-func newModel(client *Client, sessionID, modelName string) *uiModel {
+func newModel(client conn, sessionID, modelName string) *uiModel {
 	ta := textarea.New()
-	ta.Placeholder = "Prompt (enter to send, ctrl+j for newline, ctrl+c to quit)"
-	ta.SetHeight(3)
+	ta.Placeholder = "Message dsh — enter to send, ctrl+j for newline"
+	ta.SetHeight(1)
 	ta.Focus()
 	ta.ShowLineNumbers = false
+	ta.Prompt = "❯ "
+	ta.FocusedStyle.Prompt = styleUser
+	ta.BlurredStyle.Prompt = styleDim
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot))
+	sp.Style = lipgloss.NewStyle().Foreground(colTool)
 	return &uiModel{
 		client:    client,
 		sessionID: sessionID,
 		modelName: modelName,
 		ta:        ta,
+		spin:      sp,
 		status:    "ready",
 	}
 }
@@ -169,11 +202,11 @@ func newModel(client *Client, sessionID, modelName string) *uiModel {
 func (m *uiModel) listen() tea.Cmd {
 	return func() tea.Msg {
 		select {
-		case n := <-m.client.Notifications:
+		case n := <-m.client.NotifCh():
 			return notifMsg(n)
-		case r := <-m.client.Requests:
+		case r := <-m.client.ReqCh():
 			return reqMsg(r)
-		case err := <-m.client.Died:
+		case err := <-m.client.DiedCh():
 			return diedMsg{err}
 		}
 	}
@@ -220,8 +253,11 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.ta.Reset()
 			m.status = "working"
+			// The user line commits when the runtime echoes it back as a
+			// user/message event; until then it shows in the live region.
+			m.pending = text
 			return m, tea.Batch(
-				commit(styleUser.Render("you ▸ ")+text),
+				m.spin.Tick,
 				func() tea.Msg {
 					_, err := m.client.Prompt(m.sessionID, text)
 					return promptDoneMsg{err}
@@ -229,21 +265,42 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 
+	case spinner.TickMsg:
+		if m.working() {
+			var cmd tea.Cmd
+			m.spin, cmd = m.spin.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case notifMsg:
 		m.events++
 		n := Notification(msg)
 		cmds := []tea.Cmd{m.listen()}
-		if n.Method == "session.status" && n.Payload["sessionId"] == m.sessionID {
+		// Single-session UI: no session filter, so replayed and resumed
+		// streams drive the status too.
+		if n.Method == "session.status" {
 			if s, ok := n.Payload["status"].(string); ok {
+				wasWorking := m.working()
 				m.status = s
+				if !wasWorking && m.working() {
+					cmds = append(cmds, m.spin.Tick)
+				}
 			}
+		}
+		if in, out, ok := usageFrom(n); ok {
+			m.tokIn += in
+			m.tokOut += out
+		}
+		if event := eventOf(n); event != nil && event["type"] == "user/message" {
+			m.pending = ""
 		}
 		if delta := chunkDelta(n); delta != "" {
 			m.streamBuf += delta
 		}
 		if line := summarize(n); line != "" {
 			// summarize returns non-"" for assistant/message and turn/end
-			// (among others): the stream is settled, drop the preview.
+			// errors (among others): the stream is settled, drop the preview.
 			m.streamBuf = ""
 			cmds = append(cmds, commit(line))
 		}
@@ -272,32 +329,69 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.ta, cmd = m.ta.Update(msg)
+	// Grow the input with its content, up to four rows.
+	m.ta.SetHeight(min(max(m.ta.LineCount(), 1), 4))
 	return m, cmd
 }
 
-var styleStatusBar = lipgloss.NewStyle().Faint(true)
-
 const previewRows = 8
 
-// View is the live region: streaming preview (pre-wrapped, erasable — never
-// committed to the tape), status bar, input.
+func (m *uiModel) working() bool {
+	return m.status == "running" || m.status == "working"
+}
+
+func fmtTokens(n int) string {
+	if n >= 10000 {
+		return fmt.Sprintf("%.0fk", float64(n)/1000)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+// View is the live region: pending prompt + streaming preview (pre-wrapped,
+// erasable — never committed to the tape), input, status bar.
 func (m *uiModel) View() string {
-	preview := ""
+	live := ""
+	if m.pending != "" {
+		live += styleUser.Render("❯ ") + styleDim.Render(m.pending) + "\n"
+	}
 	if m.streamBuf != "" {
 		wrapped := lipgloss.NewStyle().Width(max(m.width, 20)).Render(
-			styleAssistant.Render("dsh ▸ ") + m.streamBuf)
+			styleItalic.Render(m.streamBuf))
 		rows := strings.Split(wrapped, "\n")
 		if len(rows) > previewRows {
 			rows = rows[len(rows)-previewRows:]
 		}
-		preview = strings.Join(rows, "\n") + "\n"
+		live += strings.Join(rows, "\n") + "\n"
 	}
-	mode := ""
+
+	glyph := styleDim.Render("●")
+	state := m.status
+	switch {
+	case m.status == "dead" || m.status == "error":
+		glyph = styleErr.Render("●")
+	case m.working():
+		glyph = m.spin.View()
+		state = "working"
+	case m.status == "idle" || m.status == "ready":
+		glyph = styleMark.Render("●")
+	}
+	// Styles don't nest: render every segment separately or the glyph's
+	// color bleeds across the whole bar.
+	parts := []string{glyph + " " + styleDim.Render(state), styleDim.Render(m.modelName)}
+	if m.tokIn+m.tokOut > 0 {
+		parts = append(parts, styleDim.Render(fmt.Sprintf("↑%s ↓%s", fmtTokens(m.tokIn), fmtTokens(m.tokOut))))
+	}
+	short := m.sessionID
+	if len(short) > 16 {
+		short = short[:16] + "…"
+	}
+	parts = append(parts, styleDim.Render(short))
 	if m.raw {
-		mode = "  [raw]"
+		parts = append(parts, styleDim.Render("raw log on"))
 	}
-	bar := styleStatusBar.Render(fmt.Sprintf(
-		" %s  ·  %s  ·  %s  ·  %d events%s  ·  ctrl+r raw log",
-		m.sessionID, m.modelName, m.status, m.events, mode))
-	return preview + bar + "\n" + m.ta.View()
+	bar := " " + strings.Join(parts, styleDim.Render("  ·  "))
+	return live + "\n" + m.ta.View() + "\n" + bar
 }

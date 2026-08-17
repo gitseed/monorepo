@@ -249,6 +249,10 @@ func (c *Client) RespondError(id json.RawMessage, code int, message string) erro
 	})
 }
 
+func (c *Client) NotifCh() <-chan Notification  { return c.Notifications }
+func (c *Client) ReqCh() <-chan IncomingRequest { return c.Requests }
+func (c *Client) DiedCh() <-chan error          { return c.Died }
+
 func (c *Client) Initialize(cwd, provider, model string, maxTokens int) error {
 	params := map[string]any{"cwd": cwd, "provider": provider, "model": model}
 	if maxTokens > 0 {
