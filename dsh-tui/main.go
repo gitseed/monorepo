@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -44,6 +45,7 @@ func main() {
 	}
 
 	var c conn
+	var lc *launcher
 	if *replay != "" {
 		rc, err := startReplay(*replay)
 		if err != nil {
@@ -69,22 +71,24 @@ func main() {
 		}
 		config, _ = filepath.Abs(config)
 
-		env := []string{
-			"DSH_CORDIS_CONFIG=" + config,
-			"DSH_CWD=" + ws,
-			"DSH_SESSION_ROOT=" + sr,
-			"DSH_MODEL=" + *model,
+		lc = &launcher{
+			bin: rt.Bin,
+			ws:  ws,
+			env: []string{
+				"DSH_CORDIS_CONFIG=" + config,
+				"DSH_CWD=" + ws,
+				"DSH_SESSION_ROOT=" + sr,
+				"DSH_MODEL=" + *model,
+			},
+			provider: *provider,
+			model:    *model,
 		}
-		client, err := StartClient([]string{rt.Bin}, ws, env)
+		client, err := lc.start()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "failed to launch runtime:", err)
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		defer client.Close()
-		if err := client.Initialize(ws, *provider, *model, 0); err != nil {
-			fmt.Fprintln(os.Stderr, "initialize failed:", err)
-			os.Exit(1)
-		}
 		if *probe {
 			if err := runProbe(client, sessionID, *prompt); err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -102,6 +106,7 @@ func main() {
 	// live region below — streaming preview, status, input — is
 	// managed/pre-wrapped repainting.
 	m := newModel(c, sessionID, *model)
+	m.launch = lc
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -113,9 +118,32 @@ func main() {
 type conn interface {
 	Prompt(sessionID, text string) (string, error)
 	RespondError(id json.RawMessage, code int, message string) error
+	Kill()
 	NotifCh() <-chan Notification
 	ReqCh() <-chan IncomingRequest
 	DiedCh() <-chan error
+}
+
+// launcher restarts the runtime with the same config — the interrupt path
+// (kill + relaunch) needs it, and it keeps main() as the only other caller.
+type launcher struct {
+	bin      string
+	ws       string
+	env      []string
+	provider string
+	model    string
+}
+
+func (l *launcher) start() (*Client, error) {
+	client, err := StartClient([]string{l.bin}, l.ws, l.env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to launch runtime: %w", err)
+	}
+	if err := client.Initialize(l.ws, l.provider, l.model, 0); err != nil {
+		client.Close()
+		return nil, fmt.Errorf("initialize failed: %w", err)
+	}
+	return client, nil
 }
 
 func envOr(key, fallback string) string {
@@ -159,6 +187,11 @@ type notifMsg Notification
 type reqMsg IncomingRequest
 type diedMsg struct{ err error }
 type promptDoneMsg struct{ err error }
+type disarmMsg struct{}
+type restartedMsg struct {
+	client *Client
+	err    error
+}
 
 type uiModel struct {
 	client    conn
@@ -171,15 +204,20 @@ type uiModel struct {
 	pending   string // prompt sent but not yet acknowledged by the runtime
 	raw       bool
 	status    string
+	note      string // transient status-bar hint
 	events    int
 	tokIn     int
 	tokOut    int
 	width     int
+
+	launch     *launcher // nil in replay mode
+	armed      bool      // first esc pressed, second interrupts
+	restarting bool      // runtime killed on purpose, relaunch under way
 }
 
 func newModel(client conn, sessionID, modelName string) *uiModel {
 	ta := textarea.New()
-	ta.Placeholder = "Message dsh — enter to send, ctrl+j for newline"
+	ta.Placeholder = "Message dsh — enter sends · ctrl+j newline · esc interrupts · /quit"
 	ta.SetHeight(1)
 	ta.Focus()
 	ta.ShowLineNumbers = false
@@ -238,8 +276,10 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
+		case "esc", "ctrl+c":
+			// ctrl+c is esc, per Paul: interrupt when working, clear the
+			// input when idle. Quitting is /quit — never a control chord.
+			return m.escape()
 		case "ctrl+r":
 			m.raw = !m.raw
 			return m, nil
@@ -251,8 +291,18 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if text == "" {
 				return m, nil
 			}
+			switch text {
+			case "/quit", "/exit", "exit", "quit":
+				return m, tea.Quit
+			}
+			if strings.HasPrefix(text, "/") {
+				m.note = "unknown command " + text
+				m.ta.Reset()
+				return m, nil
+			}
 			m.ta.Reset()
 			m.status = "working"
+			m.note = ""
 			// The user line commits when the runtime echoes it back as a
 			// user/message event; until then it shows in the live region.
 			m.pending = text
@@ -264,6 +314,24 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				},
 			)
 		}
+
+	case disarmMsg:
+		m.armed = false
+		if m.note == "esc again to interrupt" {
+			m.note = ""
+		}
+		return m, nil
+
+	case restartedMsg:
+		m.restarting = false
+		if msg.err != nil {
+			m.status = "dead"
+			return m, commit(styleErr.Render("restart failed: " + msg.err.Error()))
+		}
+		m.client = msg.client
+		m.status = "idle"
+		m.note = ""
+		return m, m.listen()
 
 	case spinner.TickMsg:
 		if m.working() {
@@ -318,11 +386,25 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case promptDoneMsg:
 		if msg.err != nil {
 			m.status = "error"
+			m.pending = ""
 			return m, commit(styleErr.Render("prompt failed: " + msg.err.Error()))
 		}
 		return m, nil
 
 	case diedMsg:
+		m.pending = ""
+		m.streamBuf = ""
+		if m.restarting {
+			m.status = "restarting"
+			launch := m.launch
+			return m, tea.Batch(
+				commit(styleErr.Render("✗ interrupted")),
+				func() tea.Msg {
+					client, err := launch.start()
+					return restartedMsg{client, err}
+				},
+			)
+		}
 		m.status = "dead"
 		return m, commit(styleErr.Render("runtime died: " + msg.err.Error()))
 	}
@@ -335,6 +417,37 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 const previewRows = 8
+
+// escape handles esc/ctrl+c: double-press interrupts a running turn (kill +
+// relaunch, since the composition routes no session/cancel); when idle it
+// clears the input.
+func (m *uiModel) escape() (tea.Model, tea.Cmd) {
+	if m.working() && !m.restarting {
+		if m.launch == nil {
+			m.note = "replay: nothing to interrupt"
+			return m, nil
+		}
+		if !m.armed {
+			m.armed = true
+			m.note = "esc again to interrupt"
+			return m, func() tea.Msg {
+				time.Sleep(2 * time.Second)
+				return disarmMsg{}
+			}
+		}
+		m.armed = false
+		m.restarting = true
+		m.note = "interrupting…"
+		m.client.Kill()
+		return m, nil
+	}
+	if m.ta.Value() != "" {
+		m.ta.Reset()
+		return m, nil
+	}
+	m.note = "quit with /quit"
+	return m, nil
+}
 
 func (m *uiModel) working() bool {
 	return m.status == "running" || m.status == "working"
@@ -391,6 +504,9 @@ func (m *uiModel) View() string {
 	parts = append(parts, styleDim.Render(short))
 	if m.raw {
 		parts = append(parts, styleDim.Render("raw log on"))
+	}
+	if m.note != "" {
+		parts = append(parts, styleTool.Render(m.note))
 	}
 	bar := " " + strings.Join(parts, styleDim.Render("  ·  "))
 	return live + "\n" + m.ta.View() + "\n" + bar

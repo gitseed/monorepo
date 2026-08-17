@@ -281,6 +281,16 @@ func (c *Client) Prompt(sessionID, text string) (string, error) {
 	return resp.MessageID, nil
 }
 
+// Kill terminates the runtime subprocess immediately (interrupt path: the
+// jsonrpc composition routes no session/cancel, so stopping a turn means
+// stopping the process — tool children die with it, the JSONL session
+// survives on disk).
+func (c *Client) Kill() {
+	if c.cmd != nil && c.cmd.Process != nil {
+		c.cmd.Process.Kill()
+	}
+}
+
 // Close attempts a graceful shutdown and then reaps the subprocess.
 func (c *Client) Close() {
 	c.Call("shutdown", nil, 2*time.Second)
