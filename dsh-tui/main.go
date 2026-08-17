@@ -244,7 +244,7 @@ type uiModel struct {
 
 func newModel(client conn, sessionID, modelName string) *uiModel {
 	ta := textarea.New()
-	ta.Placeholder = "Message dsh — enter sends · ctrl+j newline · esc interrupts · /quit"
+	ta.Placeholder = "Message dsh — /help for keys"
 	ta.SetHeight(1)
 	ta.Focus()
 	ta.ShowLineNumbers = false
@@ -316,7 +316,11 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+r":
 			m.raw = !m.raw
 			return m, nil
-		case "ctrl+j":
+		case "alt+enter", "ctrl+j":
+			// shift+enter is the convention, but a plain terminal sends it
+			// as enter; bubbletea v1 speaks no kitty protocol, so the
+			// reachable binding is alt+enter (ESC CR) — map shift+enter to
+			// that sequence in the terminal (see README).
 			m.ta.InsertString("\n")
 			return m, nil
 		case "enter":
@@ -332,7 +336,7 @@ func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, commit(styleDim.Render(strings.Join([]string{
 					"",
 					"enter    send (mid-turn = steering, queues into the inbox)",
-					"ctrl+j   newline",
+					"shift+enter  newline — map it to send LF in your terminal (see README); ctrl+j always works",
 					"esc esc  interrupt the running turn (ctrl+c = esc)",
 					"ctrl+r   raw NDJSON logging of subsequent events",
 					"/quit    exit (also /exit, exit)",

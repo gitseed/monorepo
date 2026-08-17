@@ -26,7 +26,16 @@ DEEPSEEK_BASE_URL=https://openrouter.ai/api/v1 \
 ```
 
 Enter sends (mid-turn sends are steering — the runtime's inbox absorbs
-them, shown stacked as `(queued)`), ctrl+j newline, ctrl+r toggles raw
+them, shown stacked as `(queued)`); newline is shift+enter, via a
+one-line emulator mapping. A plain terminal sends shift+enter as enter
+and bubbletea v1 speaks no kitty protocol; ESC-prefixed encodings split
+across reads unreliably (verified: atomic ESC CR still parsed as esc,
+enter). The robust target is a bare LF (0x0a) — byte-identical to
+ctrl+j, unambiguous: kitty `map shift+enter send_text all \n`, Ghostty
+`keybind = shift+enter=text:\n`, iTerm2 shift+enter -> "send text"
+`\n`, tmux `bind -n S-Enter send-keys C-j` (outer terminal must report
+S-Enter). alt+enter also inserts a newline where it arrives atomically.
+ctrl+r toggles raw
 NDJSON logging of subsequent events. Esc (= ctrl+c) interrupts a running
 turn on double-press — the composition routes no `session/cancel` (probed:
 -32603), so interrupt kills the runtime and relaunches it; the session
