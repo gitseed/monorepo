@@ -185,11 +185,15 @@ func (m *uiModel) Init() tea.Cmd {
 
 // commit finalizes a logical line into native scrollback, unwrapped — the
 // terminal soft-wraps it, so native selection-copy re-joins the rows.
+// Each logical line ends with erase-to-end-of-row (CSI K): the live
+// region's pre-wrapped rows may have painted where a committed line's
+// final soft row ends, and any stale tail glyphs would be joined into the
+// logical line by selection-copy.
 func commit(line string) tea.Cmd {
 	if line == "" {
 		return nil
 	}
-	return tea.Println(line)
+	return tea.Println(strings.ReplaceAll(line, "\n", "\x1b[K\n") + "\x1b[K")
 }
 
 func (m *uiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
