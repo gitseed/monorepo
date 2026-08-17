@@ -5,7 +5,7 @@
 FROM docker.io/library/golang:1.26 AS dsh-tui-build
 WORKDIR /src
 COPY --from=dsh-tui-src . .
-RUN CGO_ENABLED=0 go build -o /out/dsh-tui .
+RUN CGO_ENABLED=0 go build -o /out/dsh-tui ./cmd/dsh-tui
 
 FROM quay.io/fedora/fedora:42
 
