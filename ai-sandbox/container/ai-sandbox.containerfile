@@ -11,6 +11,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         gzip \
         less \
         openssh-clients \
+        openssl \
         procps-ng \
         tar \
         unzip \
