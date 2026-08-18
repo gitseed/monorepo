@@ -204,15 +204,24 @@ local forwardProxyCluster = new Dynamic {
     name = "envoy.transport_sockets.tls"
     typed_config {
       ["@type"] = "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
+      // The cluster's TLS session cache is shared across every DFP host, and
+      // Cloudflare's edge shares session ticket keys across zones — so a
+      // ticket minted by one CF-fronted upstream (openrouter.ai) resumes
+      // against another (api.cloudflare.com), the resumed session carries the
+      // wrong peer cert, SAN validation fails, and every connect 503s (UF).
+      max_session_keys = 0
       common_tls_context {
-        // Envoy's default curve list (X25519, P-256) rejects P-384 ECDSA
-        // certs on TLS 1.2 upstreams (BoringSSL BAD_ECC_CERT) — AWS ELBs
-        // and context7's ELB are exactly that combination.
+        // Every curve BoringSSL supports and none that are known weak.
+        // Envoy's default list (X25519, P-256) rejects P-384 ECDSA certs on
+        // TLS 1.2 upstreams (BAD_ECC_CERT) — AWS ELBs and context7's ELB are
+        // exactly that combination.
         tls_params {
           ecdh_curves {
+            "X25519MLKEM768"
             "X25519"
             "P-256"
             "P-384"
+            "P-521"
           }
         }
         // With a trusted CA configured, Envoy automatically performs SAN
