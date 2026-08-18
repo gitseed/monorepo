@@ -11,6 +11,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         gzip \
         less \
         openssh-clients \
+        openssl \
         procps-ng \
         tar \
         unzip \
@@ -40,6 +41,10 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
 # TS 7 ships a native LSP server (tsc --lsp --stdio); no wrapper needed.
 RUN bun add -g typescript@7 \
     && ln -sf /root/.bun/bin/tsc /usr/local/bin/tsc
+
+# Cloudflare Workers CLI; auth arrives as CLOUDFLARE_API_TOKEN via the proxy.
+RUN bun add -g wrangler@4 \
+    && ln -sf /root/.bun/bin/wrangler /usr/local/bin/wrangler
 
 RUN curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh \
         | PI_INSTALL_DIR=/usr/local/bin sh -s -- --binary

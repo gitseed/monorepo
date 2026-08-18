@@ -16,7 +16,7 @@ RUN /usr/local/bin/pkl eval --format yaml /envoy.pkl --output-path /envoy.yaml
 FROM docker.io/envoyproxy/envoy:v1.39-latest
 # Net bind cap allows envoy to bind 443 without needing to be root.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libcap2-bin \
+    && apt-get install -y --no-install-recommends ca-certificates curl libcap2-bin \
     && setcap 'cap_net_bind_service=+ep' /usr/local/bin/envoy \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=render --chmod=0444 /envoy.yaml /etc/envoy/envoy.yaml
