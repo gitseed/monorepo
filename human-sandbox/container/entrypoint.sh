@@ -100,6 +100,7 @@ git_config() {
     git config --global user.signingkey "$key_file"
     git config --global gpg.ssh.program ssh-keygen
     git config --global gpg.ssh.allowedSignersFile "$signers_file"
+    git config --global push.autoSetupRemote true
 
     local pubkey
     pubkey=$(ssh-keygen -y -f "$key_file")
