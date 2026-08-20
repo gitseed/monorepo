@@ -1,14 +1,6 @@
 #!/bin/bash
-# Entrypoint: set up git identity, https push credentials, SSH commit
-# signing, and ~/.aws/config before handing off to the main process.
-# Each block keys off its own env var being present (human sandboxes
-# expose secrets directly); missing secrets skip the block, not fail the
-# start. Unlike ai-sandbox there is no proxy injecting anything.
-
 set -euo pipefail
 
-# Default AWS profile from the credentials scripts/up.bash resolved on the
-# host (aws configure export-credentials).
 aws_default_profile() {
     [[ -n ${SANDBOX_AWS_ACCESS_KEY_ID:-} && -n ${SANDBOX_AWS_SECRET_ACCESS_KEY:-} ]] || return 0
 
@@ -20,13 +12,7 @@ aws_default_profile() {
     if [[ -n ${SANDBOX_AWS_OUTPUT:-} ]]; then echo "output = $SANDBOX_AWS_OUTPUT"; fi
 }
 
-# AWS config for tofu's s3-on-R2 state backend (profile "cloudflare" in any
-# tofu.tf). R2 S3-compatible creds are *derived* from the Cloudflare API
-# token, not supplied separately:
-#   Access Key ID     = token id (from /user/tokens/verify)
-#   Secret Access Key = SHA-256 of the token value
-# Source: https://developers.cloudflare.com/r2/api/tokens/
-#         #get-s3-api-credentials-from-an-api-token
+# AWS config for tofu's s3-on-R2 state backend
 cloudflare_profile() {
     [[ -n ${CLOUDFLARE_API_TOKEN:-} ]] || return 0
 
@@ -35,9 +21,7 @@ cloudflare_profile() {
     token_id=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
         "$api/user/tokens/verify" | jq -er '.result.id')
 
-    # The account that owns the state buckets. Tokens often see several
-    # accounts, so take it from the project's CLOUDFLARE_ACCOUNT_ID; only
-    # fall back to the sole visible account.
+    # The account that owns the state buckets.
     local accounts
     accounts=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/accounts")
     if [[ -n ${CLOUDFLARE_ACCOUNT_ID:-} ]]; then
@@ -49,7 +33,6 @@ cloudflare_profile() {
             || { echo "entrypoint: token sees multiple cloudflare accounts; add CLOUDFLARE_ACCOUNT_ID to the infisical project" >&2; return 1; }
     fi
 
-    # Same shape as the aws config the ouroboros tofu once generated.
     cat <<EOF
 [profile cloudflare]
 aws_access_key_id=${token_id}
