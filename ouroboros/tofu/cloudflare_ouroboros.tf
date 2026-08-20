@@ -25,12 +25,19 @@ locals {
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.name
   }
+
+  # Not valid for user tokens.
+  cf_user_token_excluded_scopes = [
+    "com.cloudflare.api.account.flagship.app",
+  ]
+
   cf_perm_groups = {
     for k, v in local.cf_perms_scope_to_ids :
     k => {
       for id in v :
       local.cf_perms_ids_to_names[id] => id
     }
+    if !contains(local.cf_user_token_excluded_scopes, k)
   }
 }
 

@@ -3,3 +3,4 @@
 *.tfvars
 .env
 .DS_Store
+.claude/
