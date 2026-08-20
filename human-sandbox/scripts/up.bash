@@ -132,52 +132,38 @@ main() {
     fi
     export INFISICAL_PROJECT_ID
 
-    # The sandbox's default AWS profile mirrors the selected profile's SSO
-    # settings, so `aws sso login` works inside (no host browser: the CLI
-    # prints the authorization URL and code). Mined with `aws configure get`
-    # like the infisical keys, except sso-session sections: configure get
-    # can't read those (they are not profiles), so they fall back to parsing
-    # the config file. The sandbox writes its config from these at startup;
-    # unset keys pass through as empty and are skipped there.
-    sso_session_value() {
-        awk -v name="$1" '
-            $0 ~ "^\\[sso-session[[:space:]]+" name "[[:space:]]*\\][[:space:]]*$" { in_s = 1; next }
-            /^\[/ { in_s = 0 }
-            in_s && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
-                sub(/^[^=]*=[[:space:]]*/, "")
-                sub(/[[:space:]]+$/, "")
-                print
-                exit
-            }
-        ' key="$2" "${AWS_CONFIG_FILE:-$HOME/.aws/config}" 2>/dev/null || true
-    }
-    AWS_SSO_SESSION=$(aws configure get sso_session || true)
-    AWS_SSO_START_URL=$(aws configure get sso_start_url || true)
-    AWS_SSO_REGION=$(aws configure get sso_region || true)
-    AWS_SSO_REGISTRATION_SCOPES=$(aws configure get sso_registration_scopes || true)
-    if [[ -n $AWS_SSO_SESSION ]]; then
-        # Session-backed profile: start URL/region/scopes live in the
-        # [sso-session ...] section and shadow anything on the profile.
-        local session_value sso_key
-        for sso_key in sso_start_url sso_region sso_registration_scopes; do
-            session_value=$(sso_session_value "$AWS_SSO_SESSION" "$sso_key")
-            [[ -n $session_value ]] || continue
-            case "$sso_key" in
-                sso_start_url) AWS_SSO_START_URL=$session_value ;;
-                sso_region) AWS_SSO_REGION=$session_value ;;
-                sso_registration_scopes) AWS_SSO_REGISTRATION_SCOPES=$session_value ;;
-            esac
-        done
+    # The sandbox's default AWS profile gets the selected profile's resolved
+    # credentials: export-credentials exchanges the host's SSO session for
+    # temporary role credentials. They last as long as the permission set's
+    # session_duration (PT12H in ouroboros) — longer than any sandbox
+    # session; re-run up.bash to refresh. `aws sso login` itself can't run
+    # in the sandbox: session-form profiles use the OAuth flow, whose
+    # localhost redirect a browser outside the sandbox can't reach.
+    #
+    # --profile pins resolution to the AWS profile (with no explicit
+    # profile the env provider runs first and exported host-shell env
+    # credentials would sneak in). Carried under SANDBOX_AWS_* names and
+    # written as a profile inside: exported as real AWS_* env vars they
+    # would silently become the sandbox-wide default for every SDK
+    # resolving without an explicit profile — and env-vs-profile
+    # precedence differs across SDKs. A profile resolves the same
+    # everywhere and leaves other profiles (cloudflare) untouched.
+    local creds
+    if ! creds=$(aws configure export-credentials --profile "${AWS_PROFILE:-default}" --format process 2>&1); then
+        echo "ERROR: exporting AWS credentials from profile '${AWS_PROFILE:-default}' failed:" >&2
+        printf '%s\n' "$creds" >&2
+        echo "       This usually means its SSO session expired — re-auth with \`aws sso login${AWS_PROFILE:+ --profile $AWS_PROFILE}\` and retry." >&2
+        exit 1
     fi
-    AWS_SSO_ACCOUNT_ID=$(aws configure get sso_account_id || true)
-    AWS_SSO_ROLE_NAME=$(aws configure get sso_role_name || true)
-    AWS_PROFILE_REGION=$(aws configure get region || true)
-    AWS_PROFILE_OUTPUT=$(aws configure get output || true)
-    export AWS_SSO_SESSION AWS_SSO_START_URL AWS_SSO_REGION AWS_SSO_REGISTRATION_SCOPES
-    export AWS_SSO_ACCOUNT_ID AWS_SSO_ROLE_NAME AWS_PROFILE_REGION AWS_PROFILE_OUTPUT
-    if [[ -z $AWS_SSO_START_URL || -z $AWS_SSO_REGION ]]; then
-        echo "WARNING: AWS profile '${AWS_PROFILE:-default}' has no complete SSO configuration (sso_start_url + sso_region); the sandbox's \`aws sso login\` won't work." >&2
-    fi
+    SANDBOX_AWS_ACCESS_KEY_ID=$(jq -r '.AccessKeyId // empty' <<< "$creds")
+    SANDBOX_AWS_SECRET_ACCESS_KEY=$(jq -r '.SecretAccessKey // empty' <<< "$creds")
+    SANDBOX_AWS_SESSION_TOKEN=$(jq -r '.SessionToken // empty' <<< "$creds")
+    # The profile's region/output ride along so the default profile is
+    # usable, not just authenticated.
+    SANDBOX_AWS_REGION=$(aws configure get region || true)
+    SANDBOX_AWS_OUTPUT=$(aws configure get output || true)
+    export SANDBOX_AWS_ACCESS_KEY_ID SANDBOX_AWS_SECRET_ACCESS_KEY SANDBOX_AWS_SESSION_TOKEN
+    export SANDBOX_AWS_REGION SANDBOX_AWS_OUTPUT
 
     if [[ $# -eq 0 ]]; then
         set -- bash

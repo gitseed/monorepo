@@ -7,37 +7,22 @@
 
 set -euo pipefail
 
-# Default AWS profile mirroring the host profile's SSO settings (mined by
-# scripts/up.bash with `aws configure get`), so `aws sso login` works
-# inside the sandbox: with no browser available the CLI prints the
-# authorization URL and code for the user to open elsewhere. Session-form
-# config when the host profile references an sso-session, legacy inline
-# keys otherwise. Missing values arrive as empty env vars and their lines
-# are skipped; without the minimum (start URL + region) there is nothing
-# `aws sso login` could do, so emit nothing.
-aws_sso_profile() {
-    [[ -n ${AWS_SSO_START_URL:-} && -n ${AWS_SSO_REGION:-} ]] || return 0
+# Default AWS profile carrying the credentials scripts/up.bash resolved on
+# the host with `aws configure export-credentials`. They arrive under
+# SANDBOX_AWS_* names: exported as real AWS_* env vars they would silently
+# become the sandbox-wide default for every SDK resolving without an
+# explicit profile (and env-vs-profile precedence differs across SDKs).
+# Written as a profile they resolve uniformly everywhere and leave the
+# cloudflare profile below untouched.
+aws_default_profile() {
+    [[ -n ${SANDBOX_AWS_ACCESS_KEY_ID:-} && -n ${SANDBOX_AWS_SECRET_ACCESS_KEY:-} ]] || return 0
 
     echo "[default]"
-    if [[ -n ${AWS_SSO_SESSION:-} ]]; then
-        echo "sso_session = $AWS_SSO_SESSION"
-    else
-        echo "sso_start_url = $AWS_SSO_START_URL"
-        echo "sso_region = $AWS_SSO_REGION"
-    fi
-    if [[ -n ${AWS_SSO_ACCOUNT_ID:-} ]]; then echo "sso_account_id = $AWS_SSO_ACCOUNT_ID"; fi
-    if [[ -n ${AWS_SSO_ROLE_NAME:-} ]]; then echo "sso_role_name = $AWS_SSO_ROLE_NAME"; fi
-    if [[ -n ${AWS_PROFILE_REGION:-} ]]; then echo "region = $AWS_PROFILE_REGION"; fi
-    if [[ -n ${AWS_PROFILE_OUTPUT:-} ]]; then echo "output = $AWS_PROFILE_OUTPUT"; fi
-    if [[ -n ${AWS_SSO_SESSION:-} ]]; then
-        echo
-        echo "[sso-session $AWS_SSO_SESSION]"
-        echo "sso_start_url = $AWS_SSO_START_URL"
-        echo "sso_region = $AWS_SSO_REGION"
-        if [[ -n ${AWS_SSO_REGISTRATION_SCOPES:-} ]]; then
-            echo "sso_registration_scopes = $AWS_SSO_REGISTRATION_SCOPES"
-        fi
-    fi
+    echo "aws_access_key_id = $SANDBOX_AWS_ACCESS_KEY_ID"
+    echo "aws_secret_access_key = $SANDBOX_AWS_SECRET_ACCESS_KEY"
+    if [[ -n ${SANDBOX_AWS_SESSION_TOKEN:-} ]]; then echo "aws_session_token = $SANDBOX_AWS_SESSION_TOKEN"; fi
+    if [[ -n ${SANDBOX_AWS_REGION:-} ]]; then echo "region = $SANDBOX_AWS_REGION"; fi
+    if [[ -n ${SANDBOX_AWS_OUTPUT:-} ]]; then echo "output = $SANDBOX_AWS_OUTPUT"; fi
 }
 
 # AWS config for tofu's s3-on-R2 state backend (profile "cloudflare" in any
@@ -83,10 +68,10 @@ EOF
 }
 
 aws_config() {
-    local sso_part cloudflare_part
-    sso_part=$(aws_sso_profile)
+    local default_part cloudflare_part
+    default_part=$(aws_default_profile)
     cloudflare_part=$(cloudflare_profile)
-    if [[ -z $sso_part && -z $cloudflare_part ]]; then
+    if [[ -z $default_part && -z $cloudflare_part ]]; then
         return 0
     fi
 
@@ -95,8 +80,8 @@ aws_config() {
     chmod 700 "$aws_dir"
 
     {
-        if [[ -n $sso_part ]]; then printf '%s\n' "$sso_part"; fi
-        if [[ -n $sso_part && -n $cloudflare_part ]]; then echo; fi
+        if [[ -n $default_part ]]; then printf '%s\n' "$default_part"; fi
+        if [[ -n $default_part && -n $cloudflare_part ]]; then echo; fi
         if [[ -n $cloudflare_part ]]; then printf '%s\n' "$cloudflare_part"; fi
     } > "$aws_dir/config"
     chmod 600 "$aws_dir/config"
