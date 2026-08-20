@@ -93,6 +93,10 @@ ENV EDITOR=emacs-nox
 COPY emacs-init.el /root/.emacs.d/init.el
 
 COPY agent-config.yml /root/.omp/agent/config.yml
+# Context7 MCP server — user-level config baked into the image instead of a
+# repo-root mcp.json, so project checkouts stay free of agent tooling config.
+# The credentials proxy injects the API key (see container/upstreams.yml).
+COPY mcp.json /root/.omp/agent/mcp.json
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
 COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
