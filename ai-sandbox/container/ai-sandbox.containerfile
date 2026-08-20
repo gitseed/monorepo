@@ -93,6 +93,7 @@ ENV EDITOR=emacs-nox
 COPY emacs-init.el /root/.emacs.d/init.el
 
 COPY agent-config.yml /root/.omp/agent/config.yml
+COPY mcp.json /root/.omp/agent/mcp.json
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
 COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
