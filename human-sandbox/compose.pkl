@@ -25,6 +25,8 @@ services {
     environment = rawEnvs
     volumes {
       "${GIT_PROJECT_DIR:-..}:/workspace"
+      // Read-write: gcloud refreshes its OAuth tokens in place.
+      "${HOME}/.config/gcloud:/home/human/.config/gcloud"
     }
     cap_drop {
       "NET_RAW"
