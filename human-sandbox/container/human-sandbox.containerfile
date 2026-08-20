@@ -24,6 +24,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         jq \
         yq \
         awscli2 \
+        python3 \
         emacs-nox \
     && dnf clean all
 
@@ -62,6 +63,17 @@ RUN curl -fsSL -o /tmp/starship.tar.gz \
     && tar -xzf /tmp/starship.tar.gz -C /tmp starship \
     && install -m 0755 /tmp/starship /usr/local/bin/starship \
     && rm -f /tmp/starship*
+
+# gcloud CLI — not packaged for Fedora arm64, so pinned like the rest.
+ARG GCLOUD_VERSION=581.0.0
+ARG GCLOUD_SHA256=22cfc09888525c6daadb8764388ce14e6c26baf80ab07938eacb08c2b4ae64c9
+RUN curl -fsSL -o /tmp/gcloud.tar.gz \
+        "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-${GCLOUD_VERSION}-linux-arm.tar.gz" \
+    && echo "${GCLOUD_SHA256}  /tmp/gcloud.tar.gz" | sha256sum --check \
+    && mkdir -p /usr/local/lib \
+    && tar -xzf /tmp/gcloud.tar.gz -C /usr/local/lib \
+    && rm -f /tmp/gcloud.tar.gz
+ENV PATH=/usr/local/lib/google-cloud-sdk/bin:$PATH
 
 # The occupant: non-root with passwordless sudo. Compose must not set
 # no-new-privileges — sudo is setuid and stops working under it.
