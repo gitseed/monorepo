@@ -10,7 +10,9 @@ hideThinkingBlock: true
 # disabled for now — see extensions/memory/).
 memory:
   backend: "off"
-setupVersion: 1
+setupVersion: 2
+composer:
+  shape: box
 providers:
   # Exclude providers that fail in a sandboxed/datacenter environment:
   # - duckduckgo: bot-detection challenge on datacenter IPs
