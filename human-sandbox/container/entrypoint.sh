@@ -1,11 +1,44 @@
 #!/bin/bash
 # Entrypoint: set up git identity, https push credentials, SSH commit
-# signing, and the aws "cloudflare" profile before handing off to the main
-# process. Each block keys off its own env var being present (human
-# sandboxes expose secrets directly); missing secrets skip the block, not
-# fail the start. Unlike ai-sandbox there is no proxy injecting anything.
+# signing, and ~/.aws/config before handing off to the main process.
+# Each block keys off its own env var being present (human sandboxes
+# expose secrets directly); missing secrets skip the block, not fail the
+# start. Unlike ai-sandbox there is no proxy injecting anything.
 
 set -euo pipefail
+
+# Default AWS profile mirroring the host profile's SSO settings (mined by
+# scripts/up.bash with `aws configure get`), so `aws sso login` works
+# inside the sandbox: with no browser available the CLI prints the
+# authorization URL and code for the user to open elsewhere. Session-form
+# config when the host profile references an sso-session, legacy inline
+# keys otherwise. Missing values arrive as empty env vars and their lines
+# are skipped; without the minimum (start URL + region) there is nothing
+# `aws sso login` could do, so emit nothing.
+aws_sso_profile() {
+    [[ -n ${AWS_SSO_START_URL:-} && -n ${AWS_SSO_REGION:-} ]] || return 0
+
+    echo "[default]"
+    if [[ -n ${AWS_SSO_SESSION:-} ]]; then
+        echo "sso_session = $AWS_SSO_SESSION"
+    else
+        echo "sso_start_url = $AWS_SSO_START_URL"
+        echo "sso_region = $AWS_SSO_REGION"
+    fi
+    if [[ -n ${AWS_SSO_ACCOUNT_ID:-} ]]; then echo "sso_account_id = $AWS_SSO_ACCOUNT_ID"; fi
+    if [[ -n ${AWS_SSO_ROLE_NAME:-} ]]; then echo "sso_role_name = $AWS_SSO_ROLE_NAME"; fi
+    if [[ -n ${AWS_PROFILE_REGION:-} ]]; then echo "region = $AWS_PROFILE_REGION"; fi
+    if [[ -n ${AWS_PROFILE_OUTPUT:-} ]]; then echo "output = $AWS_PROFILE_OUTPUT"; fi
+    if [[ -n ${AWS_SSO_SESSION:-} ]]; then
+        echo
+        echo "[sso-session $AWS_SSO_SESSION]"
+        echo "sso_start_url = $AWS_SSO_START_URL"
+        echo "sso_region = $AWS_SSO_REGION"
+        if [[ -n ${AWS_SSO_REGISTRATION_SCOPES:-} ]]; then
+            echo "sso_registration_scopes = $AWS_SSO_REGISTRATION_SCOPES"
+        fi
+    fi
+}
 
 # AWS config for tofu's s3-on-R2 state backend (profile "cloudflare" in any
 # tofu.tf). R2 S3-compatible creds are *derived* from the Cloudflare API
@@ -14,7 +47,7 @@ set -euo pipefail
 #   Secret Access Key = SHA-256 of the token value
 # Source: https://developers.cloudflare.com/r2/api/tokens/
 #         #get-s3-api-credentials-from-an-api-token
-aws_config() {
+cloudflare_profile() {
     [[ -n ${CLOUDFLARE_API_TOKEN:-} ]] || return 0
 
     local api=https://api.cloudflare.com/client/v4
@@ -36,13 +69,8 @@ aws_config() {
             || { echo "entrypoint: token sees multiple cloudflare accounts; add CLOUDFLARE_ACCOUNT_ID to the infisical project" >&2; return 1; }
     fi
 
-    local aws_dir="$HOME/.aws"
-    mkdir -p "$aws_dir"
-    chmod 700 "$aws_dir"
-
-    # Same shape as the aws config the ouroboros tofu once generated, minus
-    # the SSO profile: only what the state backend needs.
-    cat > "$aws_dir/config" <<EOF
+    # Same shape as the aws config the ouroboros tofu once generated.
+    cat <<EOF
 [profile cloudflare]
 aws_access_key_id=${token_id}
 aws_secret_access_key=$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)
@@ -52,6 +80,25 @@ services = cloudflare
 s3 =
   endpoint_url = https://${account_id}.r2.cloudflarestorage.com
 EOF
+}
+
+aws_config() {
+    local sso_part cloudflare_part
+    sso_part=$(aws_sso_profile)
+    cloudflare_part=$(cloudflare_profile)
+    if [[ -z $sso_part && -z $cloudflare_part ]]; then
+        return 0
+    fi
+
+    local aws_dir="$HOME/.aws"
+    mkdir -p "$aws_dir"
+    chmod 700 "$aws_dir"
+
+    {
+        if [[ -n $sso_part ]]; then printf '%s\n' "$sso_part"; fi
+        if [[ -n $sso_part && -n $cloudflare_part ]]; then echo; fi
+        if [[ -n $cloudflare_part ]]; then printf '%s\n' "$cloudflare_part"; fi
+    } > "$aws_dir/config"
     chmod 600 "$aws_dir/config"
 }
 

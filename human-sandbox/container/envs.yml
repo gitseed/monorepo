@@ -14,3 +14,15 @@
 # the state buckets (not a secret — tofu keeps it in the project too).
 - CLOUDFLARE_ACCOUNT_ID
 - GIT_SIGNING_KEY
+# SSO settings for the sandbox's default AWS profile, mined from the
+# selected host AWS profile by scripts/up.bash (not infisical). The
+# entrypoint writes ~/.aws/config from them so `aws sso login` works
+# inside; empty values are skipped.
+- AWS_SSO_SESSION
+- AWS_SSO_START_URL
+- AWS_SSO_REGION
+- AWS_SSO_REGISTRATION_SCOPES
+- AWS_SSO_ACCOUNT_ID
+- AWS_SSO_ROLE_NAME
+- AWS_PROFILE_REGION
+- AWS_PROFILE_OUTPUT
