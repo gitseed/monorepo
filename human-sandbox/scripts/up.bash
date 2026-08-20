@@ -83,7 +83,8 @@ main() {
         exit 1
     fi
     INFISICAL_PROJECT_ID=$(
-        curl -fsS -H "Authorization: Bearer $INFISICAL_TOKEN" \
+        # @file keeps the bearer token off curl's argv, which is world-readable.
+        curl -fsS -H @<(printf 'Authorization: Bearer %s' "$INFISICAL_TOKEN") \
             "${INFISICAL_DOMAIN:-https://app.infisical.com}/api/v1/projects" \
         | jq -r --arg slug "$INFISICAL_PROJECT_SLUG" '.projects[] | select(.slug == $slug) | .id'
     )

@@ -19,12 +19,13 @@ cloudflare_profile() {
 
     local api=https://api.cloudflare.com/client/v4
     local token_id account_id
-    token_id=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    # @file keeps the bearer token off curl's argv, which is world-readable.
+    token_id=$(curl -fsS -H @<(printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN") \
         "$api/user/tokens/verify" | jq -er '.result.id')
 
     # The account that owns the state buckets.
     local accounts
-    accounts=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/accounts")
+    accounts=$(curl -fsS -H @<(printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN") "$api/accounts")
     if [[ -n ${CLOUDFLARE_ACCOUNT_ID:-} ]]; then
         account_id=$(jq -er --arg id "$CLOUDFLARE_ACCOUNT_ID" \
             '.result[] | select(.id == $id) | .id' <<< "$accounts") \
