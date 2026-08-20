@@ -1,4 +1,3 @@
-# Don't want to hardcode the cloudflare account id even though it's not a secret.
 resource "infisical_secret" "cloudflare_account" {
   name             = "CLOUDFLARE_ACCOUNT_ID"
   value_wo         = "00000000000000000000000000000000"

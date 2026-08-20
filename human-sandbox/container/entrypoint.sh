@@ -73,11 +73,8 @@ git_config() {
         return 1
     fi
 
-    # No token — skip git setup entirely.
     [[ -n ${GITHUB_TOKEN:-} ]] || return 0
 
-    # https git credentials via gh's credential helper (replaces
-    # ai-sandbox's proxy-injected GITHUB_TOKEN_BASIC).
     gh auth setup-git
 
     local git_name git_email
@@ -104,7 +101,6 @@ git_config() {
     git config --global gpg.ssh.program ssh-keygen
     git config --global gpg.ssh.allowedSignersFile "$signers_file"
 
-    # Derive the public key and create the allowed_signers file for verification.
     local pubkey
     pubkey=$(ssh-keygen -y -f "$key_file")
     echo "$git_email $pubkey" > "$signers_file"

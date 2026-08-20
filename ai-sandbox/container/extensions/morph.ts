@@ -60,7 +60,6 @@ export default function (pi: ExtensionAPI) {
         ? params.path
         : resolve(ctx.cwd, params.path)
 
-      // Read the file.
       let oldContent: string
       try {
         oldContent = readFileSync(filePath, "utf-8")
@@ -84,13 +83,11 @@ export default function (pi: ExtensionAPI) {
 
       onUpdate?.({ content: [{ type: "text", text: `Merging via ${MORPH_MODEL}...` }] })
 
-      // Build the Morph prompt.
       const prompt =
         `<instruction>${params.instruction}</instruction>\n` +
         `<code>${oldContent}</code>\n` +
         `<update>${params.update}</update>`
 
-      // Call OpenRouter.
       let response: Response
       try {
         response = await fetch(OPENROUTER_URL, {
@@ -168,10 +165,8 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      // Write the merged file.
       writeFileSync(filePath, newContent)
 
-      // Generate a diff for display.
       const diffDir = mkdtempSync(join(tmpdir(), "morph-diff-"))
       const oldCopy = join(diffDir, "original")
       try {
