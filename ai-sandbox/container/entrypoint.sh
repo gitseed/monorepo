@@ -13,8 +13,11 @@ main() {
     local key_file="$ssh_dir/signing_key"
     local signers_file="$ssh_dir/allowed_signers"
 
-    # No secret mounted — nothing to do.
-    [[ -f $secret ]] || return 0
+    # Fail loud: never fall back to unsigned commits.
+    if [[ ! -s $secret ]]; then
+        echo "entrypoint: git signing key not mounted at $secret -- refusing to start without commit signing" >&2
+        return 1
+    fi
 
     mkdir -p "$ssh_dir"
     chmod 700 "$ssh_dir"

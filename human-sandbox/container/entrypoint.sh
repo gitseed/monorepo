@@ -66,6 +66,12 @@ aws_config() {
 }
 
 git_config() {
+    # Fail loud: never fall back to unsigned commits.
+    if [[ -z ${GIT_SIGNING_KEY:-} ]]; then
+        echo "entrypoint: GIT_SIGNING_KEY is not set -- refusing to start without commit signing" >&2
+        return 1
+    fi
+
     # No token — skip git setup entirely.
     [[ -n ${GITHUB_TOKEN:-} ]] || return 0
 
@@ -79,10 +85,6 @@ git_config() {
 
     git config --global user.name "$git_name"
     git config --global user.email "$git_email"
-
-    # SSH commit signing, when the key is provided (plain env passthrough;
-    # absent key means unsigned commits, not a failed start).
-    [[ -n ${GIT_SIGNING_KEY:-} ]] || return 0
 
     local ssh_dir="$HOME/.ssh"
     local key_file="$ssh_dir/signing_key"
