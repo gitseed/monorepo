@@ -65,9 +65,16 @@ services {
     // availability, gh auth). AWS credentials are not in upstreams.yml
     // (the proxy signs via aws_request_signing), but the aws CLI and
     // boto3 need dummy values or they refuse to send requests at all.
+    //
+    // The AWS_SSO_*/AWS_PROFILE_* values are mined from the selected host
+    // AWS profile by scripts/up.bash; the entrypoint writes them as the
+    // sandbox's default profile so `aws sso login` works inside.
     environment = rawUpstreams.map((u) -> (u.env as String) + "=dummy-replaced-by-proxy")
       + List("AWS_ACCESS_KEY_ID=dummy-replaced-by-proxy",
-             "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy")
+             "AWS_SECRET_ACCESS_KEY=dummy-replaced-by-proxy",
+             "AWS_SSO_SESSION", "AWS_SSO_START_URL", "AWS_SSO_REGION",
+             "AWS_SSO_REGISTRATION_SCOPES", "AWS_SSO_ACCOUNT_ID",
+             "AWS_SSO_ROLE_NAME", "AWS_PROFILE_REGION", "AWS_PROFILE_OUTPUT")
     // On a compose network the sandbox keeps Docker's embedded DNS
     // (127.0.0.11), which serves container names and link aliases itself
     // and forwards only external queries to this server -- so the links
