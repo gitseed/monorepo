@@ -1,3 +1,4 @@
 .terraform/
 .sandbox_tofu/
 node_modules/
+.claude/
