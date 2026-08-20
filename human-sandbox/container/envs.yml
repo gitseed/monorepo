@@ -14,6 +14,7 @@
 # the state buckets (not a secret — tofu keeps it in the project too).
 - CLOUDFLARE_ACCOUNT_ID
 - GIT_SIGNING_KEY
+- INFISICAL_MACHINE_IDENTITY_ID
 # Credentials for the sandbox's default AWS profile, resolved on the host by
 # scripts/up.bash; the entrypoint writes them into ~/.aws/config.
 - SANDBOX_AWS_ACCESS_KEY_ID

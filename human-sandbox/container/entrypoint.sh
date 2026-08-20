@@ -10,6 +10,7 @@ aws_default_profile() {
     if [[ -n ${SANDBOX_AWS_SESSION_TOKEN:-} ]]; then echo "aws_session_token = $SANDBOX_AWS_SESSION_TOKEN"; fi
     if [[ -n ${SANDBOX_AWS_REGION:-} ]]; then echo "region = $SANDBOX_AWS_REGION"; fi
     if [[ -n ${SANDBOX_AWS_OUTPUT:-} ]]; then echo "output = $SANDBOX_AWS_OUTPUT"; fi
+    if [[ -n ${INFISICAL_MACHINE_IDENTITY_ID:-} ]]; then echo "infisical_machine_identity_id = $INFISICAL_MACHINE_IDENTITY_ID"; fi
 }
 
 # AWS config for tofu's s3-on-R2 state backend

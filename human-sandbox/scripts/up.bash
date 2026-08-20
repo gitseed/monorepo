@@ -74,6 +74,7 @@ main() {
         exit 1
     fi
     export INFISICAL_TOKEN
+    export INFISICAL_MACHINE_IDENTITY_ID
     # The infisical project comes from the AWS profile too
     INFISICAL_PROJECT_SLUG=$(aws configure get infisical_human_project_slug || true)
     if [[ -z $INFISICAL_PROJECT_SLUG ]]; then
