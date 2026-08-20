@@ -1,6 +1,4 @@
-# Read-only IAM user for the credentials proxy. The proxy signs AWS API
-# requests with SigV4 using these access keys. ReadOnlyAccess grants
-# read access to all AWS services.
+# The credentials proxy signs AWS API requests with these access keys.
 resource "aws_iam_user" "credentials_proxy" {
   name = "credentials-proxy"
   path = "/service/"
@@ -23,8 +21,6 @@ resource "infisical_secret" "aws_access_key_id" {
   folder_path  = "/"
 }
 
-# Secret access key is write-only in Infisical (value_wo) so it is never
-# read back.
 resource "infisical_secret" "aws_secret_access_key" {
   name             = "AWS_SECRET_ACCESS_KEY"
   value_wo         = aws_iam_access_key.credentials_proxy.secret

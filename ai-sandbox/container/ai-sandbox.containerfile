@@ -63,7 +63,6 @@ RUN rtk init -g --agent pi --auto-patch \
     && cp /root/.pi/agent/extensions/rtk.ts /root/.omp/agent/extensions/rtk.ts \
     && rm -rf /root/.pi
 
-# pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
 ARG PKL_SHA256=a76d2dd47da435a8f911b0347373f47c7e59ea54fb75ff846d20b8df10dba058
 RUN curl -fsSL -o /usr/local/bin/pkl \

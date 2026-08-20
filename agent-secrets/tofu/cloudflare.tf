@@ -1,9 +1,5 @@
-# A read-only Cloudflare API token for the agent.
-# Uses the admin Cloudflare token from ouroboros to create a scoped
-# read-only token, stored directly in the agent Infisical project.
-#
-# R2 access is restricted to the "tofu" bucket only — the "tofu-sensitive"
-# bucket contains state with secrets and must not be accessible.
+# R2 access is restricted to the "tofu" bucket — "tofu-sensitive" holds
+# state with secrets and must stay inaccessible to the agent.
 
 data "cloudflare_user" "me" {}
 
@@ -22,7 +18,6 @@ locals {
   }
 
   # "com.cloudflare.api.account.flagship.app" isn't valid for user tokens.
-  # However the more general "com.cloudflare.api.account" suffices for our purposes.
   cf_user_token_excluded_scopes = [
     "com.cloudflare.api.account.flagship.app",
   ]
@@ -37,7 +32,6 @@ locals {
   }
 
   # R2 bucket resource identifier for the "tofu" bucket (jurisdiction "default").
-  # Excludes "tofu-sensitive" which contains state with secrets.
   r2_tofu_bucket = "com.cloudflare.edge.r2.bucket.${local.cf_account_id}_default_tofu"
 }
 

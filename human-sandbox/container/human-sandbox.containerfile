@@ -37,7 +37,6 @@ RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-a
     && ln -s /usr/local/bin/bun /usr/local/bin/node \
     && rm -rf /tmp/package /tmp/bun.tgz
 
-# pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
 ARG PKL_SHA256=a76d2dd47da435a8f911b0347373f47c7e59ea54fb75ff846d20b8df10dba058
 RUN curl -fsSL -o /usr/local/bin/pkl \
@@ -45,7 +44,6 @@ RUN curl -fsSL -o /usr/local/bin/pkl \
     && echo "${PKL_SHA256}  /usr/local/bin/pkl" | sha256sum --check \
     && chmod 0755 /usr/local/bin/pkl
 
-# OpenTofu — the tofu binary.
 ARG TOFU_VERSION=1.12.5
 ARG TOFU_SHA256=e67e9da2b1ddf5050ebee62a584cb826eafe1dfd3827d7ec20899ac62791ed1a
 RUN curl -fsSL -o /tmp/tofu.tar.gz \
