@@ -1,17 +1,10 @@
-# Environment variables passed through into the sandbox verbatim. The
-# occupant is a trusted human, so unlike ai-sandbox there is no proxy —
-# secrets arrive as real values.
-
-# From the infisical project: up.bash runs docker compose under
-# `infisical run`, which populates these. Anything absent from the
-# project simply arrives unset.
+# Must be set in infisical.
 - GITHUB_TOKEN
 - CLOUDFLARE_API_TOKEN
 - CLOUDFLARE_ACCOUNT_ID
 - GIT_SIGNING_KEY
 
-# Not in infisical: resolved on the host by scripts/up.bash from the AWS
-# profile.
+# Not in infisical: resolved on the host by scripts/up.bash from the AWS profile.
 - INFISICAL_MACHINE_IDENTITY_ID
 - SANDBOX_AWS_ACCESS_KEY_ID
 - SANDBOX_AWS_SECRET_ACCESS_KEY
