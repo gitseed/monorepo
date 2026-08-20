@@ -1,0 +1,85 @@
+// Veronica's Cloudflare deployable: the voice Worker (front door) and the
+// session-driver container it dispatches calls to. `wrangler deploy` from
+// this directory deploys the Worker, points the container at the
+// pre-built driver image in Artifact Registry (built remotely by the tofu
+// apply — no local Docker anywhere), and claims the custom domain.
+//
+// This is a template: ../tofu renders it to the gitignored wrangler.jsonc
+// on apply, filling in the workspace-specific values (worker name,
+// hostname, contacts namespace, persona) from workspace.tf — the same
+// template serves every workspace, and the namespace id never needs
+// hand-copying. Edit THIS file, never the generated one, and re-apply.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": ${jsonencode("${workspace}-voice")},
+  // Pinned because the API token sees several accounts; without it
+  // wrangler would have to guess, exactly the mistake the render exists
+  // to prevent.
+  "account_id": ${jsonencode(account_id)},
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+
+  // The fixed front door: Twilio and OpenAI are configured against this
+  // hostname (write-once), and the custom domain terminates TLS at the
+  // edge — no load balancer, no origin.
+  "routes": [
+    {
+      "pattern": ${jsonencode(voice_hostname)},
+      "custom_domain": true
+    }
+  ],
+
+  // One driver container per live call, addressed by call_id through the
+  // DRIVER Durable Object namespace. max_instances is a safety ceiling on
+  // concurrent calls, not warm capacity — zero calls is zero containers.
+  // The image is the content-addressed tag Cloud Build pushed to Artifact
+  // Registry; Cloudflare pulls it with the credential registered per
+  // SETUP.md.
+  "containers": [
+    {
+      "class_name": "Driver",
+      "image": ${jsonencode(driver_image)},
+      "instance_type": "basic",
+      "max_instances": 10
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DRIVER",
+        "class_name": "Driver"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Driver"]
+    }
+  ],
+
+  // The contacts namespace is created by ../tofu, which seeds one key per
+  // name in allowed_callers.txt and fills this id in at render time.
+  "kv_namespaces": [
+    {
+      "binding": "CONTACTS",
+      "id": ${jsonencode(contacts_namespace_id)}
+    }
+  ],
+
+  // The persona and SIP destination, from workspace.tf. Not secrets —
+  // OPENAI_API_KEY and OPENAI_WEBHOOK_SECRET are uploaded with `wrangler
+  // secret put` (see SETUP.md) and never appear in the repo.
+  "vars": {
+    "OPENAI_PROJECT_ID": ${jsonencode(openai_project_id)},
+    "VOICE_MODEL": ${jsonencode(voice_model)},
+    "VOICE_VOICE": ${jsonencode(voice_voice)},
+    "VOICE_GREETING": ${jsonencode(voice_greeting)},
+    "VOICE_GREETING_SETTLE_MS": ${jsonencode(voice_greeting_settle_ms)},
+    "VOICE_INSTRUCTIONS": ${jsonencode(voice_instructions)}
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

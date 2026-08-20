@@ -1,0 +1,18 @@
+{
+  "name": "veronica-voice",
+  "private": true,
+  "description": "Veronica's voice front door (Worker) and session driver (container)",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "types": "wrangler types",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "wrangler": "^4.112.0"
+  }
+}

@@ -1,0 +1,29 @@
+.DS_Store
+
+# OpenTofu working files and local plans. Keep .terraform.lock.hcl committed.
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.wrangler/
+.terraform/
+
+# Wrangler's dry-run bundle output.
+dist/
+
+# Rendered per-workspace wrangler config; tofu apply generates it from
+# app/wrangler.template.jsonc.
+app/wrangler.jsonc
+
+node_modules/
+
+# Locally built driver binary (go build writes it into the cwd).
+app/driver/driver
+app/driver/cmd/driver/driver
+
+.commandcode/
