@@ -1,9 +1,6 @@
 #!/bin/bash
-# Entrypoint: set up git SSH commit signing before handing off to the
-# main process (omp). The private key is mounted at
-# /run/secrets/git_signing_key by compose. Git identity (name, email)
-# is fetched dynamically from the GitHub API via gh, since the proxy
-# injects the real GITHUB_TOKEN at runtime.
+# Git identity is fetched from the GitHub API via gh — the credentials
+# proxy injects the real GITHUB_TOKEN at runtime.
 
 set -euo pipefail
 
@@ -26,7 +23,6 @@ main() {
     cp "$secret" "$key_file"
     chmod 600 "$key_file"
 
-    # Fetch git identity from GitHub API (proxy injects real token at runtime).
     local git_name git_email pubkey
     git_name=$(gh api user --jq '.login')
     git_email=$(gh api user/emails --jq '.[] | select(.primary==true) | .email')
@@ -39,7 +35,6 @@ main() {
     git config --global gpg.ssh.program ssh-keygen
     git config --global gpg.ssh.allowedSignersFile "$signers_file"
 
-    # Derive the public key and create the allowed_signers file for verification.
     pubkey=$(ssh-keygen -y -f "$key_file")
     echo "$git_email $pubkey" > "$signers_file"
     chmod 600 "$signers_file"

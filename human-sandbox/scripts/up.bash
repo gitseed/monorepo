@@ -93,7 +93,6 @@ main() {
     fi
     export INFISICAL_PROJECT_ID
 
-    # Credentials for the sandbox's default AWS profile.
     local creds
     if ! creds=$(aws configure export-credentials --profile "${AWS_PROFILE:-default}" --format process 2>&1); then
         echo "ERROR: exporting AWS credentials from profile '${AWS_PROFILE:-default}' failed:" >&2

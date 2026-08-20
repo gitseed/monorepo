@@ -8,7 +8,6 @@ set -euo pipefail
 # this file while a sandbox session is running causes bogus syntax errors when
 # the session exits.
 main() {
-    # omp workspace is the monorepo root directory
     GIT_PROJECT_DIR=$(cd -- "$(dirname -- "$0")/../.." && pwd)
     cd "$GIT_PROJECT_DIR"
 
@@ -47,14 +46,13 @@ main() {
             status=1
         fi
 
-        # Stop the shared memory service when the last sandbox exits.
         local projects
         if ! projects=$(docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null); then
             echo "WARNING: could not enumerate containers; leaving memory service running" >&2
             return $status
         fi
         if printf '%s\n' "$projects" | grep -q '^ai-sandbox-[0-9][0-9]*$'; then
-            return $status   # another session is still active
+            return $status
         fi
         "${MEMORY_COMPOSE[@]}" down --timeout 10 2>/dev/null || true
         return $status

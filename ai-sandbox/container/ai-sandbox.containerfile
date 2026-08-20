@@ -26,7 +26,6 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         emacs-nox \
     && dnf clean all
 
-# Bun instead of dnf's nodejs, which is much larger.
 ARG BUN_VERSION=1.3.14
 ARG BUN_SHA512=5f94ac3d91ecfa260ef11fde7c8711b5cee04f64360e03df9620b1124c7871706e9b0930d1cfc4b0730dc07dc4806a420da67b21854f869086ff104e40713067
 RUN curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-aarch64/-/bun-linux-aarch64-${BUN_VERSION}.tgz" \
@@ -59,13 +58,11 @@ RUN curl -fsSL -o /tmp/rtk.tar.gz \
     && chmod 0755 /usr/local/bin/rtk \
     && rm -f /tmp/rtk.tar.gz
 
-# Install the RTK Pi extension and relocate it to the omp extensions directory.
 RUN rtk init -g --agent pi --auto-patch \
     && mkdir -p /root/.omp/agent/extensions \
     && cp /root/.pi/agent/extensions/rtk.ts /root/.omp/agent/extensions/rtk.ts \
     && rm -rf /root/.pi
 
-# pkl — Apple Pkl CLI config language.
 ARG PKL_VERSION=0.32.1
 ARG PKL_SHA256=a76d2dd47da435a8f911b0347373f47c7e59ea54fb75ff846d20b8df10dba058
 RUN curl -fsSL -o /usr/local/bin/pkl \
@@ -83,7 +80,6 @@ ENV NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem
 # system bundle, which includes the local CA.
 ENV AWS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
 
-# No-graphical Emacs as the default editor.
 ENV EDITOR=emacs-nox
 
 # Emacs init — fixes fn+right (End) which was broken because \e[4~ maps to
@@ -93,6 +89,7 @@ ENV EDITOR=emacs-nox
 COPY emacs-init.el /root/.emacs.d/init.el
 
 COPY agent-config.yml /root/.omp/agent/config.yml
+COPY mcp.json /root/.omp/agent/mcp.json
 # Morph Fast Apply extension — calls morph-v3-fast via OpenRouter.
 COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 
@@ -100,18 +97,13 @@ COPY extensions/morph.ts /root/.omp/agent/extensions/morph.ts
 COPY extensions/openrouter-advisor.ts /root/.omp/agent/extensions/openrouter-advisor.ts
 COPY extensions/openrouter-advisor/advisors/ /root/.omp/agent/extensions/openrouter-advisor/advisors/
 
-# Memory extension — captures memories to the shared postgres over its unix
-# socket via Bun's native SQL bindings. Configured (incl. enabled/disabled)
-# by memory.json. The entry point imports ./memory/{config,openrouter};
-# the subfolder is inert to omp's extension scanner (no index.ts).
+# The ./memory subfolder is inert to omp's extension scanner (no index.ts).
 COPY extensions/memory.ts /root/.omp/agent/extensions/memory.ts
 COPY extensions/memory/config.ts extensions/memory/openrouter.ts /root/.omp/agent/extensions/memory/
 COPY extensions/memory/memory.json /root/.omp/agent/memory.json
 # System-prompt contract for the memory system and automatic surfacing.
 COPY extensions/memory/APPEND_SYSTEM.md /root/.omp/agent/APPEND_SYSTEM.md
 
-# git SSH commit signing — the entrypoint sets up identity and signing
-# config before handing off to the main process (needs gh CLI + proxy-injected token).
 COPY entrypoint.sh /entrypoint.sh
 
 WORKDIR /workspace

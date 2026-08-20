@@ -6,7 +6,6 @@ resource "infisical_project" "ouroboros" {
   should_create_default_envs = false
 }
 
-# Just one environment for admin creds for now, since I just have one laptop...
 resource "infisical_project_environment" "global" {
   name       = "global"
   project_id = infisical_project.ouroboros.id
