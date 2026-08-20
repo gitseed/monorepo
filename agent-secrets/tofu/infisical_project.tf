@@ -6,7 +6,6 @@ resource "infisical_project" "agent" {
   should_create_default_envs = false
 }
 
-# Just one environment for admin creds for now, since I just have one laptop...
 resource "infisical_project_environment" "global" {
   name       = tofu.workspace
   project_id = infisical_project.agent.id

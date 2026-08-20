@@ -182,8 +182,7 @@ local dynamicForwardProxyFilter = new Dynamic {
 
 /// The single egress cluster: every chain routes through it. DNS is
 /// resolved lazily per-request, so nothing is resolved at init no matter
-/// how many hostnames the config covers — this replaced ~15K static
-/// LOGICAL_DNS clusters that flooded the resolver at init.
+/// how many hostnames the config covers.
 /// TLS SAN validation is automatic: Envoy verifies the cert against the
 /// resolved hostname and sets SNI automatically.
 local forwardProxyCluster = new Dynamic {

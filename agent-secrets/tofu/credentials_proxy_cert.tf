@@ -29,13 +29,11 @@ locals {
   # from the AWS account's available regions, excluding mainland China).
   aws_regions = jsondecode(file("${path.module}/../../ai-sandbox/sigv4/regions.json")).regions
 
-  # Wildcard SANs for AWS egress: 1 global + 1 per region
   aws_wildcard_sans = concat(
     ["*.amazonaws.com"],
     [for r in local.aws_regions : "*.${r}.amazonaws.com"]
   )
 
-  # All hostnames for the cert: existing upstreams + AWS wildcards
   all_dns_names = concat(
     [for u in local.upstreams : u.host],
     local.aws_wildcard_sans

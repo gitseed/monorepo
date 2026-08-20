@@ -1,4 +1,3 @@
-# Putting my email address into a infisical secret so that I don't need to flash it in the source code.
 resource "infisical_secret" "email" {
   name             = "EMAIL_ADDRESS"
   value_wo         = "fakeaddress@example.com"
