@@ -132,6 +132,28 @@ main() {
     fi
     export INFISICAL_PROJECT_ID
 
+    # Credentials for the sandbox's default AWS profile. Validity = the
+    # permission set's session_duration (PT12H in ouroboros); re-run up.bash
+    # to refresh. Carried as SANDBOX_AWS_* and written as a profile inside —
+    # as AWS_* env vars they'd become the sandbox-wide default for no-profile
+    # SDK resolution.
+    local creds
+    if ! creds=$(aws configure export-credentials --profile "${AWS_PROFILE:-default}" --format process 2>&1); then
+        echo "ERROR: exporting AWS credentials from profile '${AWS_PROFILE:-default}' failed:" >&2
+        printf '%s\n' "$creds" >&2
+        echo "       This usually means its SSO session expired — re-auth with \`aws sso login${AWS_PROFILE:+ --profile $AWS_PROFILE}\` and retry." >&2
+        exit 1
+    fi
+    SANDBOX_AWS_ACCESS_KEY_ID=$(jq -r '.AccessKeyId // empty' <<< "$creds")
+    SANDBOX_AWS_SECRET_ACCESS_KEY=$(jq -r '.SecretAccessKey // empty' <<< "$creds")
+    SANDBOX_AWS_SESSION_TOKEN=$(jq -r '.SessionToken // empty' <<< "$creds")
+    # The profile's region/output ride along so the default profile is
+    # usable, not just authenticated.
+    SANDBOX_AWS_REGION=$(aws configure get region || true)
+    SANDBOX_AWS_OUTPUT=$(aws configure get output || true)
+    export SANDBOX_AWS_ACCESS_KEY_ID SANDBOX_AWS_SECRET_ACCESS_KEY SANDBOX_AWS_SESSION_TOKEN
+    export SANDBOX_AWS_REGION SANDBOX_AWS_OUTPUT
+
     if [[ $# -eq 0 ]]; then
         set -- bash
     fi
