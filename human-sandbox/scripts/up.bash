@@ -110,7 +110,13 @@ main() {
     export SANDBOX_AWS_REGION SANDBOX_AWS_OUTPUT
 
     if [[ $# -eq 0 ]]; then
-        set -- bash
+        if [[ -t 0 && -t 1 ]]; then
+            # A plain `exit` returns the last command's status, which infisical
+            # relays as "failed to wait for command termination". Noise -- drop it.
+            set -- bash -c 'bash; true'
+        else
+            set -- bash
+        fi
     fi
 
     # The run must be under infisical so envs are populated.
