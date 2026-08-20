@@ -1,22 +1,11 @@
-# Environment variables passed through from infisical into the sandbox
-# verbatim. up.bash runs docker compose under `infisical run`, which
-# populates these with real values; unlike ai-sandbox there is no proxy to
-# substitute them — the sandbox occupant is a trusted human. Only what a
-# human actually uses from the ouroboros project: no agent tooling keys
-# (openrouter/firecrawl/context7), no proxy artifacts (GITHUB_TOKEN_BASIC).
-# Anything absent from the project simply arrives unset.
+# Must be set in infisical.
 - GITHUB_TOKEN
-# The entrypoint derives the R2 state-backend credentials from this token
-# (access key id = token id, secret = sha256 of the value) and writes the
-# aws "cloudflare" profile — no separate R2 keys in the project.
 - CLOUDFLARE_API_TOKEN
-# Tokens often see several cloudflare accounts; this pins the one that owns
-# the state buckets (not a secret — tofu keeps it in the project too).
 - CLOUDFLARE_ACCOUNT_ID
 - GIT_SIGNING_KEY
+
+# Not in infisical: resolved on the host by scripts/up.bash from the AWS profile.
 - INFISICAL_MACHINE_IDENTITY_ID
-# Credentials for the sandbox's default AWS profile, resolved on the host by
-# scripts/up.bash; the entrypoint writes them into ~/.aws/config.
 - SANDBOX_AWS_ACCESS_KEY_ID
 - SANDBOX_AWS_SECRET_ACCESS_KEY
 - SANDBOX_AWS_SESSION_TOKEN
