@@ -20,12 +20,20 @@ locals {
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.name
   }
+
+  # "com.cloudflare.api.account.flagship.app" isn't valid for user tokens.
+  # However the more general "com.cloudflare.api.account" suffices for our purposes.
+  cf_user_token_excluded_scopes = [
+    "com.cloudflare.api.account.flagship.app",
+  ]
+
   cf_perm_groups = {
     for k, v in local.cf_perms_scope_to_ids :
     k => {
       for id in v :
       local.cf_perms_ids_to_names[id] => id
     }
+    if !contains(local.cf_user_token_excluded_scopes, k)
   }
 
   # R2 bucket resource identifier for the "tofu" bucket (jurisdiction "default").
