@@ -1,0 +1,11 @@
+# Run by the tofu root's terraform_data provisioner (see ../../tofu/
+# image.tf): gcloud builds submit with _IMAGE pointing into Artifact
+# Registry, tagged with the source hash. Logging goes to Cloud Logging
+# because the custom build service account has no default logs bucket.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "--tag", "${_IMAGE}", "."]
+images:
+  - "${_IMAGE}"
+options:
+  logging: CLOUD_LOGGING_ONLY
