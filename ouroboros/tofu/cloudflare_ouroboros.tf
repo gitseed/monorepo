@@ -26,9 +26,7 @@ locals {
     group.id => group.name
   }
 
-  # User tokens cannot reference permission groups with granular resource
-  # scopes (Cloudflare API error 1001: "User tokens cannot reference roles
-  # with granular resource scopes"), e.g. the per-app Flagship scopes.
+  # Not valid for user tokens.
   cf_user_token_excluded_scopes = [
     "com.cloudflare.api.account.flagship.app",
   ]
