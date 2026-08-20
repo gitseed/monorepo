@@ -7,13 +7,8 @@
 
 set -euo pipefail
 
-# Default AWS profile carrying the credentials scripts/up.bash resolved on
-# the host with `aws configure export-credentials`. They arrive under
-# SANDBOX_AWS_* names: exported as real AWS_* env vars they would silently
-# become the sandbox-wide default for every SDK resolving without an
-# explicit profile (and env-vs-profile precedence differs across SDKs).
-# Written as a profile they resolve uniformly everywhere and leave the
-# cloudflare profile below untouched.
+# Default AWS profile from the credentials scripts/up.bash resolved on the
+# host (aws configure export-credentials).
 aws_default_profile() {
     [[ -n ${SANDBOX_AWS_ACCESS_KEY_ID:-} && -n ${SANDBOX_AWS_SECRET_ACCESS_KEY:-} ]] || return 0
 

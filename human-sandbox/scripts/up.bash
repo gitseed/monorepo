@@ -132,22 +132,11 @@ main() {
     fi
     export INFISICAL_PROJECT_ID
 
-    # The sandbox's default AWS profile gets the selected profile's resolved
-    # credentials: export-credentials exchanges the host's SSO session for
-    # temporary role credentials. They last as long as the permission set's
-    # session_duration (PT12H in ouroboros) — longer than any sandbox
-    # session; re-run up.bash to refresh. `aws sso login` itself can't run
-    # in the sandbox: session-form profiles use the OAuth flow, whose
-    # localhost redirect a browser outside the sandbox can't reach.
-    #
-    # --profile pins resolution to the AWS profile (with no explicit
-    # profile the env provider runs first and exported host-shell env
-    # credentials would sneak in). Carried under SANDBOX_AWS_* names and
-    # written as a profile inside: exported as real AWS_* env vars they
-    # would silently become the sandbox-wide default for every SDK
-    # resolving without an explicit profile — and env-vs-profile
-    # precedence differs across SDKs. A profile resolves the same
-    # everywhere and leaves other profiles (cloudflare) untouched.
+    # Credentials for the sandbox's default AWS profile. Validity = the
+    # permission set's session_duration (PT12H in ouroboros); re-run up.bash
+    # to refresh. Carried as SANDBOX_AWS_* and written as a profile inside —
+    # as AWS_* env vars they'd become the sandbox-wide default for no-profile
+    # SDK resolution.
     local creds
     if ! creds=$(aws configure export-credentials --profile "${AWS_PROFILE:-default}" --format process 2>&1); then
         echo "ERROR: exporting AWS credentials from profile '${AWS_PROFILE:-default}' failed:" >&2
