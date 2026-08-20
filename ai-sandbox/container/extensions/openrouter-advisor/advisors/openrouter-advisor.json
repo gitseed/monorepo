@@ -1,7 +1,7 @@
 {
   "name": "openrouter_advisor",
   "disabled": false,
-  "description": "Consult a higher-intelligence advisor model for strategic guidance, then continue your work informed by its advice. Use it before committing to an approach on a complex task, when you are stuck, or before declaring a task done.",
+  "description": "Use before committing to an approach on a complex task or when stuck. Consult a higher-intelligence advisor model for strategic guidance.",
   "label": "OpenRouter Advisor",
   "model": "moonshotai/kimi-k3",
   "fallback_models": ["anthropic/claude-opus-5"],
