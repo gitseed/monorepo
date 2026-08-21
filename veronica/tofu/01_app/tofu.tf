@@ -23,12 +23,11 @@ terraform {
       version = "0.14.0"
     }
   }
-
   backend "s3" {
-    profile              = "cloudflare"
-    bucket               = "tofu"
-    workspace_key_prefix = "veronica"
-    key = "tofu"
+    profile                     = "cloudflare"
+    bucket                      = "tofu"
+    workspace_key_prefix        = "veronica"
+    key                         = basename(abspath(path.module))
     use_lockfile                = true
     region                      = "auto"
     skip_credentials_validation = true
