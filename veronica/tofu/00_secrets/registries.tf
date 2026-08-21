@@ -92,6 +92,11 @@ data "cloudflare_secrets_stores" "all" {
   }
 }
 
+import {
+  to = cloudflare_secrets_store_secret.gar_key
+  id = "${local.workspace.cloudflare_account_id}/${data.cloudflare_secrets_stores.all.result[0].id}/${tofu.workspace}-gar-pull"
+}
+
 resource "cloudflare_secrets_store_secret" "gar_key" {
   account_id = local.workspace.cloudflare_account_id
   store_id   = data.cloudflare_secrets_stores.all.result[0].id

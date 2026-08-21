@@ -84,16 +84,17 @@ Only the credential chain leaves for 00_secrets, in two steps.
    ```
 
 2. In 00_secrets:
-   - `google_service_account.image_pull` and `google_project_service.services`
-     have static `import` blocks directly in `registries.tf` (mirroring the
-     pattern `twilio.tf` uses for the Twilio phone number), so they are
-     adopted automatically on apply.
+   - `google_service_account.image_pull`, `google_project_service.services`,
+     and `cloudflare_secrets_store_secret.gar_key` have static `import`
+     blocks in `registries.tf` (mirroring the pattern `twilio.tf` uses for
+     the Twilio phone number), so existing resources are adopted
+     automatically into state on apply instead of failing on creation conflicts.
    - For `restapi_object.gar_registry`, the Cloudflare Containers registries
      API is list-only with no per-object GET endpoint (which breaks `tofu import`).
      Run `00_secrets/repair-gar-registry.sh` to reconstruct its state entry
      directly from the live API record.
-   - The pull service account key, Secrets Store secret, and scoped account
-     token are minted fresh on apply, avoiding manual key export or token copying.
+   - The pull service account key and scoped account token are minted
+     fresh on apply, avoiding manual key export or token copying.
 
 One caveat: with versioning enabled on the readable bucket, older
 revisions of its state object still contain the removed secrets until
