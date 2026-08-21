@@ -149,22 +149,27 @@ export default async function (pi: ExtensionAPI) {
       ORDER BY id`,
     )) as Array<{ id: number | bigint; content: string; has_embedding: boolean }>
     for (const row of rows) {
-      if (!row.has_embedding) {
-        const vector = await embed(config.embedding, row.content)
-        // Re-check inside the UPDATE: capture may have filled it meanwhile.
-        if (vector)
-          await db(
-            (s) => s`UPDATE memories SET embedding = ${vector}::vector WHERE id = ${row.id} AND embedding IS NULL`,
-          )
-      }
-      const [current] = (await db(
-        (s) => s`SELECT summary FROM memories WHERE id = ${row.id}`,
-      )) as Array<{ summary: string | null }>
-      if (current?.summary) continue
-      const summary = await summarize(config.summary, row.content)
-      if (summary) {
-        summaryById.set(Number(row.id), summary)
-        await db((s) => s`UPDATE memories SET summary = ${summary} WHERE id = ${row.id} AND summary IS NULL`)
+      try {
+        if (!row.has_embedding) {
+          const vector = await embed(config.embedding, row.content)
+          // Re-check inside the UPDATE: capture may have filled it meanwhile.
+          if (vector)
+            await db(
+              (s) => s`UPDATE memories SET embedding = ${vector}::vector WHERE id = ${row.id} AND embedding IS NULL`,
+            )
+        }
+        const [current] = (await db(
+          (s) => s`SELECT summary FROM memories WHERE id = ${row.id}`,
+        )) as Array<{ summary: string | null }>
+        if (current?.summary) continue
+        const summary = await summarize(config.summary, row.content)
+        if (summary) {
+          summaryById.set(Number(row.id), summary)
+          await db((s) => s`UPDATE memories SET summary = ${summary} WHERE id = ${row.id} AND summary IS NULL`)
+        }
+      } catch {
+        // One dead row or a wedged-connection deadline must not abort the
+        // pass — the rest of the table still gets repaired this boot.
       }
     }
   }

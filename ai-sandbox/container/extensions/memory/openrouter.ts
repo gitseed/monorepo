@@ -50,6 +50,10 @@ export async function summarize(
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
+    // Set only by the explicit [DONE] sentinel: a clean early close (EOF
+    // first) means the connection was cut mid-generation — exactly the
+    // proxy failure this streaming exists for — and must yield null, not
+    // a silently truncated phrase.
     let done = false
     while (!done) {
       const { done: eof, value } = await reader.read()
@@ -75,7 +79,7 @@ export async function summarize(
         }
       }
     }
-    return summary.trim() || null
+    return done ? summary.trim() || null : null
   } catch {
     return null
   }
