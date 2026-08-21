@@ -17,8 +17,9 @@
 #             private_credential: {store_id, secret_name}}, kind: "GAR"}
 #   DELETE /accounts/{account}/containers/registries/{domain}
 #
-# There is no per-object GET, which breaks `tofu import` (the importer
-# can only read GET {path}/{id}); to re-adopt an existing record into
+# There is no per-object GET for the registry object, and Secrets Store
+# secret endpoints use internal UUIDs rather than secret names for GET,
+# which breaks declarative import by name; to adopt existing records into
 # state, run repair-gar-registry.sh instead.
 
 locals {
@@ -90,11 +91,6 @@ data "cloudflare_secrets_stores" "all" {
       error_message = "Expected exactly one Secrets Store on the account (found ${length(self.result)}); the registry credential does not know where to live."
     }
   }
-}
-
-import {
-  to = cloudflare_secrets_store_secret.gar_key
-  id = "${local.workspace.cloudflare_account_id}/${data.cloudflare_secrets_stores.all.result[0].id}/${tofu.workspace}-gar-pull"
 }
 
 resource "cloudflare_secrets_store_secret" "gar_key" {
