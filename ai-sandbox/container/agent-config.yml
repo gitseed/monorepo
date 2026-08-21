@@ -1,7 +1,7 @@
 eval:
   py: false
 modelRoles:
-  default: meta/muse-spark-1.2-contributor:high
+  default: openrouter/meta/muse-spark-1.2-contributor:high
   smol: openrouter/deepseek/deepseek-v4-flash-0731
 symbolPreset: nerd
 hideThinkingBlock: true
