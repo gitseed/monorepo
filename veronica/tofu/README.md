@@ -31,7 +31,7 @@ exact state it always had: init, select the workspace, plan clean.
 The Twilio number's `import` block in `twilio.tf` rides along unused —
 the number was imported into this state long ago.
 
-Only the credential chain leaves for 00_secrets, in two declarative steps.
+Only the credential chain leaves for 00_secrets, in two steps.
 
 1. In 01_app, forget the resources that moved to 00_secrets using
    `removed` blocks (with `destroy = false` so OpenTofu drops them
@@ -83,38 +83,37 @@ Only the credential chain leaves for 00_secrets, in two declarative steps.
    }
    ```
 
-2. Adopt them in 00_secrets with `import` blocks — the same pattern
-   `twilio.tf` uses for the phone number. Paste into a temporary
-   `migrate.tf` there, fill in the IDs, apply, confirm the following
-   plan is clean, then delete `migrate.tf`. (Data sources need no import;
-   they refresh at plan time.)
+2. Adopt them in 00_secrets:
+   - For standard resources, use `import` blocks (paste into a temporary
+     `migrate.tf` in `00_secrets`, fill in IDs, apply, then delete
+     `migrate.tf`):
 
-   ```hcl
-   import {
-     to = google_service_account.image_pull
-     id = "voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com"
-   }
+     ```hcl
+     import {
+       to = google_service_account.image_pull
+       id = "voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com"
+     }
 
-   import {
-     to = google_service_account_key.image_pull
-     id = "projects/untrusted-agent/serviceAccounts/voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com/keys/<key id — gcloud iam service-accounts keys list --iam-account=voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com>"
-   }
+     import {
+       to = google_service_account_key.image_pull
+       id = "projects/untrusted-agent/serviceAccounts/voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com/keys/<key id — gcloud iam service-accounts keys list --iam-account=voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com>"
+     }
 
-   import {
-     to = cloudflare_account_token.registry
-     id = "<token id — Cloudflare dashboard, Account API Tokens>"
-   }
+     import {
+       to = cloudflare_account_token.registry
+       id = "<token id — Cloudflare dashboard, Account API Tokens>"
+     }
 
-   import {
-     to = cloudflare_secrets_store_secret.gar_key
-     id = "<account id>/<store id>/veronica-gar-pull"
-   }
+     import {
+       to = cloudflare_secrets_store_secret.gar_key
+       id = "<account id>/<store id>/veronica-gar-pull"
+     }
+     ```
 
-   import {
-     to = restapi_object.gar_registry
-     id = "us-central1-docker.pkg.dev"
-   }
-   ```
+   - For `restapi_object.gar_registry`, the Cloudflare Containers registries
+     API is list-only with no per-object GET endpoint (which breaks `tofu import`).
+     Run `00_secrets/repair-gar-registry.sh` to reconstruct its state entry
+     directly from the live API record.
 
 Fetch IDs from the consoles or `gcloud` — never `tofu show` before
 step 1 removes them from 01_app's state, which prints the SA key and
