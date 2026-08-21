@@ -6,4 +6,3 @@ Because we have the admin credentials from ouroboros, we can create many credent
 
 Manually created credentials:
 * Github read only PAT: Github is literally the worst don't even get me started.
-* Twilio read only API key: Twilio's IAM REST API requires `application/x-www-form-urlencoded` request bodies which the `mastercard/restapi` provider cannot send.
