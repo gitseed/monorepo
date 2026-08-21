@@ -23,10 +23,17 @@ values you wrote in config.
 
 ## Layers
 
-As few layers as possible — one is the goal. The only routine reason
-for a second is the secrets rule: secret-bearing resources go in a
-sensitive layer, everything else stays in a regular one. Don't invent
-layers for tidiness.
+As few layers as possible — one is the goal. Don't invent layers for
+tidiness; split only when one apply genuinely can't do it:
+
+- **The secrets rule.** Secret-bearing resources go in a sensitive
+  layer so everything else stays agent-plannable.
+- **Hard apply ordering.** A later layer can't even plan until an
+  earlier one has applied. Example: one layer bakes an AMI, the next
+  looks it up with a data source and launches instances from it. In a
+  single layer that lookup runs at plan time, before the AMI exists —
+  no dependency edge fixes that. Where an apply must fully finish
+  before the next plan makes sense, that's a layer boundary.
 
 Single layer: `<project>/tofu/`. Multiple layers: numbered folders in
 apply order:
