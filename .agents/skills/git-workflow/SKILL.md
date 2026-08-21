@@ -17,6 +17,11 @@ git fetch && git worktree add -b <branch> ~/.omp/wt/<branch> origin/main
 cd ~/.omp/wt/<branch>
 ```
 
+If you are already on the branch you intend to work on (e.g. the user
+checked it out), you may work directly in the current working tree
+instead of creating a new worktree. New branches you create should still
+use a worktree.
+
 ## Rules
 
 - **Never commit to main.** All work happens on a feature branch.
@@ -28,8 +33,9 @@ cd ~/.omp/wt/<branch>
 ## When done
 
 1. `git push -u origin <branch>`
-2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test
+2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test (skip if you worked directly in the current working tree)
 3. `gh pr create --base main --title "<title>" --body "<description>"`
+4. Link the PR URL in your response (e.g. `https://github.com/<owner>/<repo>/pull/<number>`)
 
 `omp worktree list` shows all agent-managed worktrees; `omp worktree clear`
 reclaims orphaned ones.
