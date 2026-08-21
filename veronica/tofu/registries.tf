@@ -13,6 +13,10 @@
 #            {domain, is_public, auth: {public_credential,
 #             private_credential: {store_id, secret_name}}, kind: "GAR"}
 #   DELETE /accounts/{account}/containers/registries/{domain}
+#
+# There is no per-object GET, which breaks `tofu import` (the importer
+# can only read GET {path}/{id}); to re-adopt an existing record into
+# state, run repair-gar-registry.sh instead.
 
 locals {
   registry_hostname = split("/", local.image_repository)[0]
