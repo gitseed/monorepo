@@ -69,6 +69,16 @@ RUN curl -fsSL -o /usr/local/bin/pkl \
         "https://github.com/apple/pkl/releases/download/${PKL_VERSION}/pkl-linux-aarch64" \
     && echo "${PKL_SHA256}  /usr/local/bin/pkl" | sha256sum --check \
     && chmod 0755 /usr/local/bin/pkl
+
+ARG TOFU_VERSION=1.12.5
+ARG TOFU_SHA256=e67e9da2b1ddf5050ebee62a584cb826eafe1dfd3827d7ec20899ac62791ed1a
+RUN curl -fsSL -o /tmp/tofu.tar.gz \
+        "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_arm64.tar.gz" \
+    && echo "${TOFU_SHA256}  /tmp/tofu.tar.gz" | sha256sum --check \
+    && tar -xzf /tmp/tofu.tar.gz -C /usr/local/bin/ tofu \
+    && chmod 0755 /usr/local/bin/tofu \
+    && rm -f /tmp/tofu.tar.gz
+
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
     cp /ca.pem /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem \
     && update-ca-trust extract
