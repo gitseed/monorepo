@@ -93,17 +93,20 @@ removed {
    tofu workspace select veronica # or tofu workspace new veronica
    ./repair-gar-registry.sh
    ```
-   This pulls state, resolves live records from Cloudflare APIs, and directly
-   populates `cloudflare_secrets_store_secret.gar_key` (by resolving its
-   internal UUID) and `restapi_object.gar_registry` into `00_secrets` state,
-   preventing duplicate creation errors (`secret_name_already_exists`).
+   **Why this runs first:** Cloudflare's Secrets Store API requires an internal
+   UUID for single-secret lookups (`<account_id>/<store_id>/<secret_id>`),
+   and the Containers registries API has no single-object GET endpoint.
+   Running `./repair-gar-registry.sh` queries the collection APIs, finds the
+   live `veronica-gar-pull` secret UUID and registry record, and writes their
+   state entries directly into `00_secrets` state, preventing duplicate
+   creation failures (`secret_name_already_exists`).
 
 2. Then run `tofu apply`:
    - `google_service_account.image_pull` and `google_project_service.services`
      are adopted automatically via static `import` blocks in `registries.tf`.
    - `cloudflare_account_token.registry` and `google_service_account_key.image_pull`
      are created / updated.
-   - Run `tofu plan` to confirm the state is completely clean.
+   - Run `tofu plan` to confirm all resources are synchronized and clean.
 
 One caveat: with versioning enabled on the readable bucket, older
 revisions of its state object still contain the removed secrets until

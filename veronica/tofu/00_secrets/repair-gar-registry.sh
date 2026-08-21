@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Reconstruct state entries for resources in 00_secrets from live Cloudflare APIs:
-# 1. restapi_object.gar_registry (no per-object GET in Containers registries API)
-# 2. cloudflare_secrets_store_secret.gar_key (looks up the secret's UUID by name)
+# Adopt pre-existing Cloudflare resources into 00_secrets state before apply:
+# 1. cloudflare_secrets_store_secret.gar_key (resolves the secret UUID by name from store list API)
+# 2. restapi_object.gar_registry (reconstructs state entry; registries API has no single GET endpoint)
 #
-# Safe to delete or re-run once `tofu plan` shows no changes.
+# Run this once during migration before `tofu apply`.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -43,11 +43,11 @@ print(json.dumps(matches[0]))
 )
 
 secret_id=$(python3 -c 'import sys, json; print(json.loads(sys.argv[1])["id"])' "$secret_info")
-echo "Found secret $secret_name with ID $secret_id in store $store_id"
+echo "Found secret $secret_name (ID: $secret_id) in store $store_id"
 
 backup="secrets-backup-$(date +%Y%m%d%H%M%S).tfstate"
 tofu state pull > "$backup"
-echo "state backed up to $backup"
+echo "State backed up to $backup"
 
 python3 -c '
 import sys, json
@@ -176,5 +176,6 @@ with open("secrets-fixed.tfstate", "w") as f:
 ' "$backup" "$reg" "$secret_info" "$ACCOUNT_ID"
 
 tofu state push secrets-fixed.tfstate
-echo "state pushed; verifying with plan:"
+echo "State pushed to 00_secrets remote backend."
+echo "Running tofu plan to verify:"
 tofu plan
