@@ -8,14 +8,14 @@ locals {
 
   workspaces = {
     veronica = {
-      project_id = "untrusted-agent"
-      region     = "us-central1"
+      project_id            = "untrusted-agent"
+      region                = "us-central1"
       cloudflare_account_id = "287cae24e46a0aeed1dbc2942fc58dd7"
-      voice_zone      = "veronica-agent.com"
-      voice_hostname  = "voice.veronica-agent.com"
-      voice_area_code = "205"
-      openai_project_id = "proj_qnaIpxtc3PddMxEKQUeqry4O"
-      voice_model = "gpt-realtime-2.1-mini"
+      voice_zone            = "veronica-agent.com"
+      voice_hostname        = "voice.veronica-agent.com"
+      voice_area_code       = "205"
+      openai_project_id     = "proj_qnaIpxtc3PddMxEKQUeqry4O"
+      voice_model           = "gpt-realtime-2.1-mini"
       # Currently available voices:
       # alloy (female)
       # ash (male)
@@ -36,7 +36,7 @@ locals {
       # greeting. Too short clips the greeting's start ("...ronica
       # speaking"); too long is dead air after the pickup.
       voice_greeting_settle_ms = 500
-      voice_instructions = <<-EOT
+      voice_instructions       = <<-EOT
         You are Veronica, an AI personal assistant.
       EOT
     }

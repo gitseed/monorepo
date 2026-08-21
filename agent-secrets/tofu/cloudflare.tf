@@ -12,6 +12,7 @@ locals {
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.scopes
   })
+
   cf_perms_ids_to_names = {
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.name
@@ -65,4 +66,12 @@ resource "infisical_secret" "cloudflare_api_token" {
   env_slug         = infisical_project_environment.global.slug
   workspace_id     = infisical_project.agent.id
   folder_path      = "/"
+}
+
+resource "infisical_secret" "cloudflare_account" {
+  name         = "CLOUDFLARE_ACCOUNT_ID"
+  value        = local.cf_account_id
+  env_slug     = infisical_project_environment.global.slug
+  workspace_id = infisical_project.agent.id
+  folder_path  = "/"
 }
