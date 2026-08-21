@@ -25,100 +25,70 @@ reverse.
 
 ## Migrating the pre-split deployment (one-time)
 
-The old single-layer root left everything under state key `tofu`. Each
-layer adopts what it owns with `import` blocks — the same pattern
-`twilio.tf` uses for the phone number — so no state file is ever pulled,
-edited, or pushed by hand.
+01_app's state does not move. Its backend pins the pre-split root's
+state object (`key = "tofu"`), so every resource it owned keeps the
+exact state it always had: init, select the workspace, plan clean.
+The Twilio number's `import` block in `twilio.tf` rides along unused —
+the number was imported into this state long ago.
 
-Paste the blocks for a layer into a temporary `migrate.tf` there, fill in
-the IDs, `tofu apply`, confirm the following plan is clean, then delete
-`migrate.tf`. Fresh deploys skip all of this. Fetch IDs from the consoles
-or `gcloud` — not `tofu show` on the old root, which prints the SA key
-and token to the terminal. (`contacts_namespace_id` is safe: it is the
-old root's non-secret output.)
+Only the credential chain leaves for 00_secrets, in two steps.
 
-### tofu/01_app
+1. In 01_app, stop tracking what moved. This removes state entries
+   only — it never touches a real resource:
 
-```hcl
-import {
-  to = google_project_service.services["artifactregistry.googleapis.com"]
-  id = "artifactregistry.googleapis.com"
-}
-# one more per service: cloudbuild, iam, logging, storage
+   ```bash
+   cd tofu/01_app && tofu init && tofu workspace select veronica
+   tofu state rm \
+     google_project_service.services \
+     google_service_account.image_pull \
+     google_service_account_key.image_pull \
+     cloudflare_secrets_stores.all \
+     cloudflare_secrets_store_secret.gar_key \
+     cloudflare_api_token_permission_groups_list.account_scope \
+     cloudflare_account_token.registry \
+     restapi_object.gar_registry
+   ```
 
-import {
-  to = google_artifact_registry_repository.voice
-  id = "projects/untrusted-agent/locations/us-central1/repositories/veronica"
-}
+2. Adopt them in 00_secrets with import blocks — the same pattern
+   `twilio.tf` uses for the phone number. Paste into a temporary
+   `migrate.tf` there, fill in the IDs, apply, confirm the following
+   plan is clean, then delete `migrate.tf`. (The two data sources need
+   nothing; they refresh at plan time.)
 
-import {
-  to = google_service_account.build
-  id = "voice-build-veronica@untrusted-agent.iam.gserviceaccount.com"
-}
+   ```hcl
+   import {
+     to = google_service_account.image_pull
+     id = "voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com"
+   }
 
-import {
-  to = google_project_iam_member.build_builds
-  id = "untrusted-agent roles/cloudbuild.builds.builder serviceAccount:voice-build-veronica@untrusted-agent.iam.gserviceaccount.com"
-}
+   import {
+     to = google_service_account_key.image_pull
+     id = "projects/untrusted-agent/serviceAccounts/voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com/keys/<key id — gcloud iam service-accounts keys list --iam-account=voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com>"
+   }
 
-import {
-  to = google_artifact_registry_repository_iam_member.build_pushes
-  id = "projects/untrusted-agent/locations/us-central1/repositories/veronica roles/artifactregistry.writer serviceAccount:voice-build-veronica@untrusted-agent.iam.gserviceaccount.com"
-}
+   import {
+     to = cloudflare_account_token.registry
+     id = "<token id — Cloudflare dashboard, Account API Tokens>"
+   }
 
-import {
-  to = google_artifact_registry_repository_iam_member.cloudflare_pulls
-  id = "projects/untrusted-agent/locations/us-central1/repositories/veronica roles/artifactregistry.reader serviceAccount:voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com"
-}
+   import {
+     to = cloudflare_secrets_store_secret.gar_key
+     id = "<account id>/<store id>/veronica-gar-pull"
+   }
 
-import {
-  to = cloudflare_workers_kv_namespace.contacts
-  id = "<namespace id>"
-}
+   import {
+     to = restapi_object.gar_registry
+     id = "us-central1-docker.pkg.dev"
+   }
+   ```
 
-import {
-  to = cloudflare_zone_setting.voice_ssl
-  id = "<zone id>/ssl"
-}
-```
+Fetch IDs from the consoles or `gcloud` — never `tofu show` before
+step 1 removes them from 01_app's state, which prints the SA key and
+token to the terminal. If a provider rejects an ID format, use whatever
+`tofu import` would take.
 
-The Twilio number needs nothing — its `import` block in `twilio.tf`
-carries over unchanged. `local_file.wrangler_config` and `time_sleep` are
-not imported: both recreate instantly and harmlessly, and
-`terraform_data.image` re-runs once, re-pushing the same content-addressed
-tag.
+One caveat: with versioning enabled on the readable bucket, older
+revisions of its state object still contain the removed secrets until
+they expire — purge old versions if that matters for you.
 
-### tofu/00_secrets
-
-```hcl
-import {
-  to = google_service_account.image_pull
-  id = "voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com"
-}
-
-import {
-  to = google_service_account_key.image_pull
-  id = "projects/untrusted-agent/serviceAccounts/voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com/keys/<key id — gcloud iam service-accounts keys list --iam-account=voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com>"
-}
-
-import {
-  to = cloudflare_account_token.registry
-  id = "<token id — Cloudflare dashboard, Account API Tokens>"
-}
-
-import {
-  to = cloudflare_secrets_store_secret.gar_key
-  id = "<account id>/<store id>/veronica-gar-pull"
-}
-
-import {
-  to = restapi_object.gar_registry
-  id = "us-central1-docker.pkg.dev"
-}
-```
-
-If a provider rejects an ID format, adjust it per that provider's import
-docs — the block takes exactly the ID `tofu import` would.
-
-Once both layers plan clean, delete the old `tofu` state object from the
-readable bucket — it still contains the SA key and the token.
+Fresh deploys skip everything above.

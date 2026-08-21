@@ -34,10 +34,14 @@ terraform {
   }
 
   backend "s3" {
-    profile                     = "cloudflare"
-    bucket                      = "tofu"
-    workspace_key_prefix        = "veronica"
-    key                         = basename(abspath(path.module))
+    profile              = "cloudflare"
+    bucket               = "tofu"
+    workspace_key_prefix = "veronica"
+
+    # The pre-split root's state object, adopted as-is: 01_app's resources
+    # keep the exact state they always had (see ../README.md, "Migrating").
+    key = "tofu"
+
     use_lockfile                = true
     region                      = "auto"
     skip_credentials_validation = true
