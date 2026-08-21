@@ -5,7 +5,7 @@ resource "aws_iam_user" "credentials_proxy" {
 }
 
 resource "aws_iam_user_policy_attachment" "readonly" {
-  user = aws_iam_user.credentials_proxy.name
+  user       = aws_iam_user.credentials_proxy.name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 

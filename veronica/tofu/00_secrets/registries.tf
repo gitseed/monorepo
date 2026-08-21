@@ -1,5 +1,5 @@
 locals {
-  image_repository = "${local.workspace.region}-docker.pkg.dev/${local.workspace.project_id}/${tofu.workspace}/driver"
+  image_repository  = "${local.workspace.region}-docker.pkg.dev/${local.workspace.project_id}/${tofu.workspace}/driver"
   registry_hostname = split("/", local.image_repository)[0]
 }
 
@@ -79,9 +79,9 @@ resource "cloudflare_account_token" "registry" {
 }
 
 resource "restapi_object" "gar_registry" {
-  provider = restapi.cloudflare_containers
-  path      = "/registries"
-  object_id = local.registry_hostname
+  provider     = restapi.cloudflare_containers
+  path         = "/registries"
+  object_id    = local.registry_hostname
   id_attribute = "domain"
   data = jsonencode({
     domain    = local.registry_hostname
@@ -101,7 +101,7 @@ resource "restapi_object" "gar_registry" {
     search_key   = "domain"
     search_value = local.registry_hostname
   }
-  destroy_path = "/registries/{id}"
+  destroy_path              = "/registries/{id}"
   ignore_all_server_changes = true
   force_new = [
     local.registry_hostname,
