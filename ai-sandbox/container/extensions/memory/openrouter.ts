@@ -9,7 +9,14 @@ const OPENROUTER = "https://openrouter.ai/api/v1"
 
 /** One-phrase summary from the summary model, or null on any failure. No
  *  fabricated stand-ins: a NULL summary column is the loud, queryable
- *  signal that summarization failed or hasn't run. */
+ *  signal that summarization failed or hasn't run.
+ *
+ *  Streams the completion and accumulates delta.content: non-streamed
+ *  requests hold the connection fully idle until the full text is ready,
+ *  and intermediate proxies/gateways kill such idle connections before
+ *  upstream finishes — the client sees a truncated body with no content,
+ *  i.e. a NULL summary. Chunks keep the connection alive for the whole
+ *  generation. */
 export async function summarize(
   cfg: MemoryConfig["summary"],
   content: string,
@@ -23,6 +30,7 @@ export async function summarize(
       body: JSON.stringify({
         model: cfg.model,
         max_tokens: cfg.maxTokens,
+        stream: true,
         // Reasoning burns the whole token budget before any content lands
         // (finish_reason "length", content null).
         reasoning: { enabled: false },
@@ -37,9 +45,37 @@ export async function summarize(
       }),
       signal: AbortSignal.timeout(cfg.timeoutMs),
     })
-    if (!res.ok) return null
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    return data.choices?.[0]?.message?.content?.trim() || null
+    if (!res.ok || !res.body) return null
+    let summary = ""
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ""
+    let done = false
+    while (!done) {
+      const { done: eof, value } = await reader.read()
+      if (eof) break
+      buffer += decoder.decode(value, { stream: true })
+      let newline: number
+      while ((newline = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newline).trim()
+        buffer = buffer.slice(newline + 1)
+        if (!line.startsWith("data:")) continue
+        const payload = line.slice("data:".length).trim()
+        if (payload === "[DONE]") {
+          done = true
+          break
+        }
+        try {
+          const chunk = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string | null } }>
+          }
+          summary += chunk.choices?.[0]?.delta?.content ?? ""
+        } catch {
+          // Malformed frame — skip it, later frames still count.
+        }
+      }
+    }
+    return summary.trim() || null
   } catch {
     return null
   }
