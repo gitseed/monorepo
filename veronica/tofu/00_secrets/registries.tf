@@ -7,6 +7,9 @@
 # using a single-purpose account token minted right here, so the main
 # token's breadth never reaches the undocumented surface.
 #
+# Everything here lands in this layer's state with secrets in it (the SA
+# key, the token value), which is why it is the sensitive layer.
+#
 # The API, from wrangler's own client (there are no docs to cite):
 #   GET    /accounts/{account}/containers/registries
 #   POST   /accounts/{account}/containers/registries
@@ -15,13 +18,42 @@
 #   DELETE /accounts/{account}/containers/registries/{domain}
 
 locals {
+  # Mirrors 01_app/image.tf's repository layout; the repository itself
+  # lives there, and the layers are wired only by these stable names.
+  image_repository = "${local.workspace.region}-docker.pkg.dev/${local.workspace.project_id}/${tofu.workspace}/driver"
+
   registry_hostname = split("/", local.image_repository)[0]
 }
 
-# The private half of the pull identity (image.tf owns the SA itself).
-# google_service_account_key.private_key is the base64 of the JSON key
-# file — exactly the encoding wrangler stores, so it passes through
-# untouched.
+resource "google_project_service" "services" {
+  for_each = toset([
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "iam.googleapis.com",
+    "logging.googleapis.com",
+    "storage.googleapis.com",
+  ])
+
+  service            = each.value
+  disable_on_destroy = false
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+# Cloudflare's identity for pulling the image: the SA email is the public
+# half (01_app grants it reader on the repository by name), and the key
+# below is the private half. It lives in this layer because its key does.
+resource "google_service_account" "image_pull" {
+  account_id   = "voice-pull-${tofu.workspace}"
+  display_name = "Veronica driver image pull (Cloudflare)"
+  depends_on   = [google_project_service.services]
+}
+
+# The private half of the pull identity. google_service_account_key's
+# private_key is the base64 of the JSON key file — exactly the encoding
+# wrangler stores, so it passes through untouched.
 resource "google_service_account_key" "image_pull" {
   service_account_id = google_service_account.image_pull.name
 }
@@ -46,6 +78,43 @@ resource "cloudflare_secrets_store_secret" "gar_key" {
   scopes     = ["containers"]
   value      = google_service_account_key.image_pull.private_key
   comment    = "Created by OpenTofu: credentials for image registry ${local.registry_hostname}"
+}
+
+# The permission-group catalog for account-scoped tokens; pick "Workers
+# Containers Write" by exact name rather than hardcoding an id.
+data "cloudflare_api_token_permission_groups_list" "account_scope" {
+  scope = "com.cloudflare.api.account"
+
+  lifecycle {
+    postcondition {
+      condition     = contains([for group in self.result : group.name], "Workers Containers Write")
+      error_message = "The permission-group catalog has no 'Workers Containers Write'; the registries token cannot be scoped."
+    }
+  }
+}
+
+locals {
+  containers_write_id = one([
+    for group in data.cloudflare_api_token_permission_groups_list.account_scope.result :
+    group.id if group.name == "Workers Containers Write"
+  ])
+}
+
+# A token that can do exactly one thing on exactly one account: manage
+# container registries.
+resource "cloudflare_account_token" "registry" {
+  account_id = local.workspace.cloudflare_account_id
+  name       = "${tofu.workspace}-container-registries"
+
+  policies = [{
+    effect = "allow"
+    permission_groups = [
+      { id = local.containers_write_id }
+    ]
+    resources = jsonencode({
+      "com.cloudflare.api.account.${local.workspace.cloudflare_account_id}" = "*"
+    })
+  }]
 }
 
 resource "restapi_object" "gar_registry" {

@@ -5,7 +5,7 @@ locals {
   # (one name per line), the single source of truth for the contacts KV
   # keys this root creates and the voice Worker reads.
   contact_names = toset([
-    for line in split("\n", file("${path.module}/../allowed_callers.txt")) :
+    for line in split("\n", file("${path.module}/../../allowed_callers.txt")) :
     trimspace(line) if trimspace(line) != ""
   ])
 

@@ -41,20 +41,28 @@ The repo is two roots:
   module, and `wrangler.template.jsonc` tying them together. `wrangler
   deploy` deploys the Worker, points the container at the pre-built
   driver image, and claims the custom domain.
-- `tofu/` (pinned providers, `veronica` workspace, the state backend from
-  `lightning`) owns everything the deploy stands on: the contacts KV
-  namespace with one key per name in `allowed_callers.txt` (the numbers
-  typed into the dashboard so they never enter the repo), the Twilio
-  number, the zone's SSL setting, and the driver image itself — built
-  remotely by Cloud Build into Artifact Registry whenever the driver
-  source changes (no local Docker anywhere), tagged with the source hash
-  so every tag is immutable. The apply then renders the workspace's
-  actual `app/wrangler.jsonc` (gitignored) from the template, stitching
-  in the workspace values — worker name, hostname, contacts namespace id,
-  the image tag it just built, and Veronica's persona from `workspace.tf`
-  — so one template serves every workspace. Cloudflare pulls the image
-  from Artifact Registry as a dedicated read-only service account,
-  registered automatically by tofu (see `tofu/registries.tf`).
+- `tofu/` (pinned providers, `veronica` workspace, R2-backed state) owns
+  everything the deploy stands on, as two layers applied in numeric order
+  (see `tofu/README.md`):
+  - `tofu/01_app/` is everything plannable by sandbox agents: the contacts
+    KV namespace with one key per name in `allowed_callers.txt` (the
+    numbers typed into the dashboard so they never enter the repo), the
+    Twilio number, the zone's SSL setting, and the driver image itself —
+    built remotely by Cloud Build into Artifact Registry whenever the
+    driver source changes (no local Docker anywhere), tagged with the
+    source hash so every tag is immutable. Its apply then renders the
+    workspace's actual `app/wrangler.jsonc` (gitignored) from the
+    template, stitching in the workspace values — worker name, hostname,
+    contacts namespace id, the image tag it just built, and Veronica's
+    persona from `workspaces.tf` — so one template serves every workspace.
+  - `tofu/00_secrets/` holds the credential chain: the image-pull service
+    account and its key, stored as a Cloudflare Secrets Store secret, and
+    the registries token. Their values land in state, so this layer uses
+    the agent-inaccessible `tofu-sensitive` bucket and is applied by a
+    human; it registers the pull credential with Cloudflare's Containers
+    registries API automatically (see `00_secrets/registries.tf`). The two
+    layers are wired only by stable names — the repository path and the
+    pull SA's email — never by reading each other's state.
 
 The driver keeps the established Go shape: a thin entry point
 (`cmd/driver`) over `internal/` packages split by who they talk to —
@@ -67,18 +75,19 @@ pure logic has table tests; `go test ./...` in `app/driver` runs them.
 - OpenTofu `1.12.3`, Node 22+, and the `gcloud` CLI (the apply hands image
   builds to Cloud Build; nothing builds locally)
 - Google application-default credentials with access to the project in
-  `tofu/workspace.tf` (`gcloud auth login` and
+  `tofu/01_app/workspaces.tf` (`gcloud auth login` and
   `gcloud auth application-default login`)
 - The same `cloudflare` AWS profile used by `lightning`, with access to its
-  R2 bucket named `tofu` (the state backend)
+  R2 buckets named `tofu` and `tofu-sensitive` (the state backends; only
+  the latter needs credentials the sandbox agents don't have)
 - `CLOUDFLARE_API_TOKEN` exported, with edit access to Workers scripts,
-  KV, and the zone in `tofu/workspace.tf` (`veronica-agent.com`); wrangler
+  KV, and the zone in `tofu/01_app/workspaces.tf` (`veronica-agent.com`); wrangler
   uses the same variable
 - `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported for the provider (the
   account SID and auth token)
 - An OpenAI account with API billing enabled (the Realtime API is not
   covered by a ChatGPT subscription); its project id lives in
-  `tofu/workspace.tf` as `openai_project_id`
+  `tofu/01_app/workspaces.tf` as `openai_project_id`
 
 ## Deploy
 
@@ -102,7 +111,7 @@ key, the secrets), and the wrangler deploy — through a working phone call.
    the dispatch to the driver's `/call` endpoint. The caller keeps hearing
    ringing — nothing has answered yet.
 4. The driver accepts the call with the session config — model, voice, and
-   Veronica's instructions, from `tofu/workspace.tf`. The ringing stops:
+   Veronica's instructions, from `tofu/01_app/workspaces.tf`. The ringing stops:
    this is the pickup. It attaches the call's WebSocket in the same breath
    (the webhook is answered only once both have happened, so a failure
    makes OpenAI redeliver — idempotently, to the same container), waits a
@@ -114,10 +123,11 @@ key, the secrets), and the wrangler deploy — through a working phone call.
 
 Changing a caller's number is a KV dashboard edit — it takes effect on the
 next call (and, for removals, on live calls within a minute). Adding or
-removing a *name* means editing `allowed_callers.txt` and applying `tofu/`.
-Changing the persona, voice, or model is an edit to `tofu/workspace.tf`,
-an apply (which re-renders `app/wrangler.jsonc`), and a `wrangler deploy`.
-Changing the driver's code is an apply (which rebuilds the image and pins
+removing a *name* means editing `allowed_callers.txt` and applying
+`tofu/01_app`. Changing the persona, voice, or model is an edit to
+`tofu/01_app/workspaces.tf`, an apply (which re-renders
+`app/wrangler.jsonc`), and a `wrangler deploy`. Changing the driver's code
+is an apply (which rebuilds the image and pins
 the new tag into the config) and the same deploy; Worker code alone is
 just the deploy.
 
@@ -143,6 +153,11 @@ console's call log; session activity is on platform.openai.com under Logs.
 - The two real credentials — the OpenAI API key and webhook signing secret
   — live only as Worker secrets uploaded with `wrangler secret put`; they
   are never in the repo, in OpenTofu variables, or in state.
+- Two lesser credentials do land in OpenTofu state: the image-pull SA key
+  and the registries token. They live only in `tofu/00_secrets`, whose
+  state goes to the `tofu-sensitive` bucket that sandbox agents cannot
+  read; `01_app`'s state (bucket `tofu`) holds no secret, which is what
+  keeps it agent-plannable.
 - The webhook route only acts on requests carrying a valid Standard
   Webhooks HMAC signature from OpenAI; the TwiML route serves a static
   instruction whose only payload is the (non-secret) OpenAI project id.
