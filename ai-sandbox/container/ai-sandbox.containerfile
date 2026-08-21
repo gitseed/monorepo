@@ -21,6 +21,7 @@ RUN dnf --assumeyes --setopt=install_weak_deps=False install \
         eza \
         fzf \
         hexyl \
+        jq \
         yq \
         awscli2 \
         emacs-nox \
@@ -78,6 +79,8 @@ RUN curl -fsSL -o /tmp/tofu.tar.gz \
     && tar -xzf /tmp/tofu.tar.gz -C /usr/local/bin/ tofu \
     && chmod 0755 /usr/local/bin/tofu \
     && rm -f /tmp/tofu.tar.gz
+
+ENV TF_DATA_DIR=.sandbox_tofu
 
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \
     cp /ca.pem /etc/pki/ca-trust/source/anchors/sandbox-local-ca.pem \
