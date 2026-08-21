@@ -4,29 +4,14 @@
 # wrangler's build-locally-and-push flow. Images are tagged with the source
 # hash, so every tag is immutable and the rendered wrangler config pins
 # exactly what was built.
-
-resource "google_project_service" "services" {
-  for_each = toset([
-    "artifactregistry.googleapis.com",
-    "cloudbuild.googleapis.com",
-    "iam.googleapis.com",
-    "logging.googleapis.com",
-    "storage.googleapis.com",
-  ])
-
-  service            = each.value
-  disable_on_destroy = false
-
-  lifecycle {
-    destroy = false
-  }
-}
+#
+# The required Google APIs are enabled by 00_secrets, which always applies
+# first.
 
 resource "google_artifact_registry_repository" "voice" {
   repository_id = tofu.workspace
   format        = "DOCKER"
   description   = "Veronica's session driver images, built by ${tofu.workspace}'s tofu apply."
-  depends_on    = [google_project_service.services]
 }
 
 # Builds run as a per-workspace SA (the compute default SA would work but is
@@ -34,7 +19,6 @@ resource "google_artifact_registry_repository" "voice" {
 resource "google_service_account" "build" {
   account_id   = "voice-build-${tofu.workspace}"
   display_name = "Veronica session image build"
-  depends_on   = [google_project_service.services]
 }
 
 resource "google_project_iam_member" "build_builds" {
@@ -51,19 +35,17 @@ resource "google_artifact_registry_repository_iam_member" "build_pushes" {
   member     = "serviceAccount:${google_service_account.build.email}"
 }
 
-# Cloudflare's identity for pulling the image: the SA email is the public
-# half, and registries.tf creates a key + registers it with the Cloudflare
-# Containers registries API — no manual wrangler step, no key on disk.
-resource "google_service_account" "image_pull" {
-  account_id   = "voice-pull-${tofu.workspace}"
-  display_name = "Veronica driver image pull (Cloudflare)"
-  depends_on   = [google_project_service.services]
+# Cloudflare's pull identity lives in 00_secrets (with its key); this
+# grant reaches it by name only, so the layers never touch each other's
+# state.
+locals {
+  pull_sa_email = "voice-pull-${tofu.workspace}@${local.workspace.project_id}.iam.gserviceaccount.com"
 }
 
 resource "google_artifact_registry_repository_iam_member" "cloudflare_pulls" {
   repository = google_artifact_registry_repository.voice.name
   role       = "roles/artifactregistry.reader"
-  member     = "serviceAccount:${google_service_account.image_pull.email}"
+  member     = "serviceAccount:${local.pull_sa_email}"
 }
 
 # A build kicked off seconds after the grants above loses the IAM propagation
@@ -86,8 +68,8 @@ locals {
   # which re-runs the provisioner. Each path is hashed alongside its
   # content so a pure rename (same bytes, new location) still rebuilds.
   driver_source_hash = sha1(join("", [
-    for f in sort(fileset("${path.module}/../app/driver", "**")) :
-    "${f}=${filesha1("${path.module}/../app/driver/${f}")}"
+    for f in sort(fileset("${path.module}/../../app/driver", "**")) :
+    "${f}=${filesha1("${path.module}/../../app/driver/${f}")}"
   ]))
 
   # The content-addressed tag the rendered wrangler config deploys.
@@ -103,9 +85,9 @@ resource "terraform_data" "image" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      gcloud builds submit ${path.module}/../app/driver \
+      gcloud builds submit ${path.module}/../../app/driver \
         --project ${local.workspace.project_id} \
-        --config ${path.module}/../app/driver/cloudbuild.yaml \
+        --config ${path.module}/../../app/driver/cloudbuild.yaml \
         --substitutions _IMAGE=${local.driver_image} \
         --service-account projects/${local.workspace.project_id}/serviceAccounts/${google_service_account.build.email}
     EOT
