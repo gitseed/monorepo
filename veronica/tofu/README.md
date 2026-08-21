@@ -31,29 +31,63 @@ exact state it always had: init, select the workspace, plan clean.
 The Twilio number's `import` block in `twilio.tf` rides along unused —
 the number was imported into this state long ago.
 
-Only the credential chain leaves for 00_secrets, in two steps.
+Only the credential chain leaves for 00_secrets, in two declarative steps.
 
-1. In 01_app, stop tracking what moved. This removes state entries
-   only — it never touches a real resource:
+1. In 01_app, forget the resources that moved to 00_secrets using
+   `removed` blocks (with `destroy = false` so OpenTofu drops them
+   from state without deleting the real infrastructure). Paste into a
+   temporary `migrate.tf` there, apply to update state, then delete
+   `migrate.tf`:
 
-   ```bash
-   cd tofu/01_app && tofu init && tofu workspace select veronica
-   tofu state rm \
-     google_project_service.services \
-     google_service_account.image_pull \
-     google_service_account_key.image_pull \
-     cloudflare_secrets_stores.all \
-     cloudflare_secrets_store_secret.gar_key \
-     cloudflare_api_token_permission_groups_list.account_scope \
-     cloudflare_account_token.registry \
-     restapi_object.gar_registry
+   ```hcl
+   removed {
+     from = google_project_service.services
+     lifecycle {
+       destroy = false
+     }
+   }
+
+   removed {
+     from = google_service_account.image_pull
+     lifecycle {
+       destroy = false
+     }
+   }
+
+   removed {
+     from = google_service_account_key.image_pull
+     lifecycle {
+       destroy = false
+     }
+   }
+
+   removed {
+     from = cloudflare_secrets_store_secret.gar_key
+     lifecycle {
+       destroy = false
+     }
+   }
+
+   removed {
+     from = cloudflare_account_token.registry
+     lifecycle {
+       destroy = false
+     }
+   }
+
+   removed {
+     from = restapi_object.gar_registry
+     lifecycle {
+       destroy = false
+     }
+   }
    ```
 
-2. Adopt them in 00_secrets with import blocks — the same pattern
+2. Adopt them in 00_secrets with `import` blocks — the same pattern
    `twilio.tf` uses for the phone number. Paste into a temporary
    `migrate.tf` there, fill in the IDs, apply, confirm the following
-   plan is clean, then delete `migrate.tf`. (The two data sources need
-   nothing; they refresh at plan time.)
+   plan is clean, then delete `migrate.tf`. (Data sources need no import;
+   they refresh at plan time.)
 
    ```hcl
    import {
