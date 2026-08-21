@@ -18,8 +18,9 @@ cd ~/.omp/wt/<branch>
 ```
 
 If you are already on the branch you intend to work on (e.g. the user
-checked it out or you created it in this session), you may work directly
-in the current working tree instead of creating a new worktree.
+checked it out), you may work directly in the current working tree
+instead of creating a new worktree. New branches you create should still
+use a worktree.
 
 ## Rules
 
