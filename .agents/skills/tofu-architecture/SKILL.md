@@ -6,7 +6,7 @@ description: Load before creating or restructuring any tofu project. Layer layou
 # Tofu architecture
 
 Projects keep their infra in tofu folders ("layers") with R2-backed S3
-state. There are two state buckets, both created by ouroboros:
+state. There are two state buckets:
 
 - **`tofu`** — agent-readable, so sandbox agents can plan against it.
   Its state must NEVER contain a secret.
@@ -29,7 +29,7 @@ sensitive layer, everything else stays in a regular one. Don't invent
 layers for tidiness.
 
 Single layer: `<project>/tofu/`. Multiple layers: numbered folders in
-apply order, lightning-style:
+apply order:
 
 ```
 <project>/tofu/00_secrets/   # bucket = tofu-sensitive
