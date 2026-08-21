@@ -89,34 +89,34 @@ resources = [
     and not (r.get("type") == "cloudflare_secrets_store_secret" and r.get("name") == "gar_key")
 ]
 
-# Add gar_key resource
+# Add gar_key resource (Cloudflare Plugin Framework provider uses schema_version 500)
 resources.append({
     "mode": "managed",
     "type": "cloudflare_secrets_store_secret",
     "name": "gar_key",
     "provider": "provider[\"registry.opentofu.org/cloudflare/cloudflare\"]",
     "instances": [{
-        "schema_version": 0,
+        "schema_version": 500,
         "attributes": {
             "account_id": account_id,
             "comment": "Created by OpenTofu: credentials for image registry " + domain,
             "created": secret.get("created"),
-            "dependencies": [
-                "data.cloudflare_secrets_stores.all",
-                "google_service_account.image_pull",
-                "google_service_account_key.image_pull"
-            ],
             "id": secret["id"],
             "modified": secret.get("modified"),
             "name": secret["name"],
             "scopes": secret.get("scopes", ["containers"]),
-            "sensitive_attributes": [
-                [{"type": "get_attr", "value": "value"}]
-            ],
             "status": secret.get("status", "active"),
             "store_id": secret.get("store_id", store_id),
             "value": None
-        }
+        },
+        "sensitive_attributes": [
+            [{"type": "get_attr", "value": "value"}]
+        ],
+        "dependencies": [
+            "data.cloudflare_secrets_stores.all",
+            "google_service_account.image_pull",
+            "google_service_account_key.image_pull"
+        ]
     }]
 })
 
