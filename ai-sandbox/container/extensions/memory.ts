@@ -10,7 +10,8 @@
 // Captured content is embedded first, then inserted with its vector; the
 // summary backfills asynchronously. On failure the column stays NULL —
 // failures stay visible, nothing is fabricated. A memory is invisible to
-// recollect and surfacing until its embedding lands.
+// recollect and surfacing until its embedding lands. Boot repair retries
+// every row still missing a summary or embedding on extension load.
 //
 // Unprompted surfacing (surfacing.enabled): every heard/said/thought event
 // reuses the vector already computed for the write to run four per-kind
@@ -132,6 +133,45 @@ export default async function (pi: ExtensionAPI) {
       if (summary) await db((s) => s`UPDATE memories SET summary = ${summary} WHERE id = ${id}`)
     })().catch(() => {})
     return { id, vector }
+  }
+
+  // Boot repair: the async summary backfill and a failed embed both leave
+  // NULLs behind permanently — nothing ever retries them. On load, walk
+  // every incomplete row once; whatever fails again stays NULL (still loud,
+  // still retried next boot). Sequential: one connection, and this must
+  // never race or starve live capture traffic.
+  async function backfillIncomplete(): Promise<void> {
+    const rows = (await db(
+      (s) => s`
+      SELECT id, content, (embedding IS NOT NULL) AS has_embedding
+      FROM memories
+      WHERE summary IS NULL OR embedding IS NULL
+      ORDER BY id`,
+    )) as Array<{ id: number | bigint; content: string; has_embedding: boolean }>
+    for (const row of rows) {
+      try {
+        if (!row.has_embedding) {
+          const vector = await embed(config.embedding, row.content)
+          // Re-check inside the UPDATE: capture may have filled it meanwhile.
+          if (vector)
+            await db(
+              (s) => s`UPDATE memories SET embedding = ${vector}::vector WHERE id = ${row.id} AND embedding IS NULL`,
+            )
+        }
+        const [current] = (await db(
+          (s) => s`SELECT summary FROM memories WHERE id = ${row.id}`,
+        )) as Array<{ summary: string | null }>
+        if (current?.summary) continue
+        const summary = await summarize(config.summary, row.content)
+        if (summary) {
+          summaryById.set(Number(row.id), summary)
+          await db((s) => s`UPDATE memories SET summary = ${summary} WHERE id = ${row.id} AND summary IS NULL`)
+        }
+      } catch {
+        // One dead row or a wedged-connection deadline must not abort the
+        // pass — the rest of the table still gets repaired this boot.
+      }
+    }
   }
 
   // Cooldown: a memory surfaces at most once per session. Without this,
@@ -627,4 +667,6 @@ export default async function (pi: ExtensionAPI) {
       return new Text(theme.fg("muted", summary ? `suppress(${summary})` : `suppress(#${id})`), 0, 0)
     },
   })
+
+  void backfillIncomplete().catch(() => {})
 }
