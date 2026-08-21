@@ -294,6 +294,63 @@ local function awsFilterChain(sni: Map<String, String>): Dynamic = new Dynamic {
   }
 }
 
+local r2FilterChain = new Dynamic {
+  filter_chain_match { server_names { "*.r2.cloudflarestorage.com" } }
+  transport_socket = downstreamTls
+  filters {
+    new {
+      name = "envoy.filters.network.http_connection_manager"
+      typed_config {
+        ["@type"] = "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
+        stat_prefix = "r2"
+        route_config {
+          name = "r2"
+          virtual_hosts {
+            new {
+              name = "r2"
+              domains { "*" }
+              routes {
+                traceTrackRefusal
+                new {
+                  match { prefix = "/" }
+                  route {
+                    cluster = "forward_proxy"
+                    timeout = "0s"
+                  }
+                  typed_per_filter_config {
+                    ["envoy.filters.http.aws_request_signing"] {
+                      ["@type"] = "type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigningPerRoute"
+                      aws_request_signing {
+                        service_name = "s3"
+                        region = "auto"
+                        credential_provider {
+                          custom_credential_provider_chain = true
+                          credentials_file_provider {
+                            credentials_data_source {
+                              environment_variable = "R2_CREDENTIALS_FILE_CONTENT"
+                            }
+                          }
+                        }
+                      }
+                      stat_prefix = "r2"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        access_log { stdoutAccessLog }
+        http_filters {
+          awsRequestSigningFilter
+          dynamicForwardProxyFilter
+          routerFilter
+        }
+      }
+    }
+  }
+}
+
 static_resources {
 secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
   name = u.secret
@@ -319,6 +376,7 @@ secrets = upstreams.distinctBy((u) -> u.secret).map((u) -> new Dynamic {
       }
       filter_chains = upstreams.map((u) -> filterChain(u))
         + awsSniPatterns.map((sni) -> awsFilterChain(sni))
+        + List(r2FilterChain)
     }
   }
 

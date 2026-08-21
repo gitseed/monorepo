@@ -2,6 +2,7 @@
 # everything, then whitelist only what proxy.containerfile COPYs.
 *
 !container/envoy.pkl
+!container/proxy-entrypoint.sh
 !container/upstreams.yml
 !sigv4/signing_names.json
 !sigv4/regions.json

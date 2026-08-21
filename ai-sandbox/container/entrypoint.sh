@@ -15,10 +15,26 @@ aws_default_profile() {
     if [[ -n ${AWS_DEFAULT_REGION:-} && -z ${AWS_REGION:-} ]]; then echo "region = $AWS_DEFAULT_REGION"; fi
 }
 
+cloudflare_profile() {
+    [[ -n ${CLOUDFLARE_ACCOUNT_ID:-} ]] || return 0
+
+    cat <<EOF
+[profile cloudflare]
+aws_access_key_id = dummy-replaced-by-proxy
+aws_secret_access_key = dummy-replaced-by-proxy
+services = cloudflare
+
+[services cloudflare]
+s3 =
+  endpoint_url = https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com
+EOF
+}
+
 aws_config() {
-    local default_part
+    local default_part cloudflare_part
     default_part=$(aws_default_profile)
-    if [[ -z $default_part ]]; then
+    cloudflare_part=$(cloudflare_profile)
+    if [[ -z $default_part && -z $cloudflare_part ]]; then
         return 0
     fi
 
@@ -26,7 +42,11 @@ aws_config() {
     mkdir -p "$aws_dir"
     chmod 700 "$aws_dir"
 
-    printf '%s\n' "$default_part" > "$aws_dir/config"
+    {
+        if [[ -n $default_part ]]; then printf '%s\n' "$default_part"; fi
+        if [[ -n $default_part && -n $cloudflare_part ]]; then echo; fi
+        if [[ -n $cloudflare_part ]]; then printf '%s\n' "$cloudflare_part"; fi
+    } > "$aws_dir/config"
     chmod 600 "$aws_dir/config"
 }
 

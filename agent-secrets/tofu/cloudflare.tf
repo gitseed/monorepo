@@ -75,3 +75,20 @@ resource "infisical_secret" "cloudflare_account" {
   workspace_id = infisical_project.agent.id
   folder_path  = "/"
 }
+
+resource "infisical_secret" "r2_access_key_id" {
+  name         = "R2_ACCESS_KEY_ID"
+  value        = cloudflare_api_token.readonly.id
+  env_slug     = infisical_project_environment.global.slug
+  workspace_id = infisical_project.agent.id
+  folder_path  = "/"
+}
+
+resource "infisical_secret" "r2_secret_access_key" {
+  name             = "R2_SECRET_ACCESS_KEY"
+  value_wo         = sha256(cloudflare_api_token.readonly.value)
+  value_wo_version = 1
+  env_slug         = infisical_project_environment.global.slug
+  workspace_id     = infisical_project.agent.id
+  folder_path      = "/"
+}
