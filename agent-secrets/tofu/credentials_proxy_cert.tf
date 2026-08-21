@@ -35,7 +35,8 @@ locals {
 
   all_dns_names = concat(
     [for u in local.upstreams : u.host],
-    local.aws_wildcard_sans
+    local.aws_wildcard_sans,
+    ["*.r2.cloudflarestorage.com"]
   )
 }
 

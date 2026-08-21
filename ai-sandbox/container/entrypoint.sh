@@ -4,7 +4,53 @@
 
 set -euo pipefail
 
-main() {
+aws_default_profile() {
+    [[ -n ${AWS_ACCESS_KEY_ID:-} && -n ${AWS_SECRET_ACCESS_KEY:-} ]] || return 0
+
+    echo "[default]"
+    echo "aws_access_key_id = $AWS_ACCESS_KEY_ID"
+    echo "aws_secret_access_key = $AWS_SECRET_ACCESS_KEY"
+    if [[ -n ${AWS_SESSION_TOKEN:-} ]]; then echo "aws_session_token = $AWS_SESSION_TOKEN"; fi
+    if [[ -n ${AWS_REGION:-} ]]; then echo "region = $AWS_REGION"; fi
+    if [[ -n ${AWS_DEFAULT_REGION:-} && -z ${AWS_REGION:-} ]]; then echo "region = $AWS_DEFAULT_REGION"; fi
+}
+
+cloudflare_profile() {
+    [[ -n ${CLOUDFLARE_ACCOUNT_ID:-} ]] || return 0
+
+    cat <<EOF
+[profile cloudflare]
+aws_access_key_id = dummy-replaced-by-proxy
+aws_secret_access_key = dummy-replaced-by-proxy
+services = cloudflare
+
+[services cloudflare]
+s3 =
+  endpoint_url = https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com
+EOF
+}
+
+aws_config() {
+    local default_part cloudflare_part
+    default_part=$(aws_default_profile)
+    cloudflare_part=$(cloudflare_profile)
+    if [[ -z $default_part && -z $cloudflare_part ]]; then
+        return 0
+    fi
+
+    local aws_dir="$HOME/.aws"
+    mkdir -p "$aws_dir"
+    chmod 700 "$aws_dir"
+
+    {
+        if [[ -n $default_part ]]; then printf '%s\n' "$default_part"; fi
+        if [[ -n $default_part && -n $cloudflare_part ]]; then echo; fi
+        if [[ -n $cloudflare_part ]]; then printf '%s\n' "$cloudflare_part"; fi
+    } > "$aws_dir/config"
+    chmod 600 "$aws_dir/config"
+}
+
+git_config() {
     local secret=/run/secrets/git_signing_key
     local ssh_dir="$HOME/.ssh"
     local key_file="$ssh_dir/signing_key"
@@ -38,6 +84,11 @@ main() {
     pubkey=$(ssh-keygen -y -f "$key_file")
     echo "$git_email $pubkey" > "$signers_file"
     chmod 600 "$signers_file"
+}
+
+main() {
+    aws_config
+    git_config
 }
 
 main "$@"

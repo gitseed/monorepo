@@ -12,6 +12,7 @@ locals {
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.scopes
   })
+
   cf_perms_ids_to_names = {
     for group in data.cloudflare_api_token_permission_groups_list.all.result :
     group.id => group.name
@@ -61,6 +62,31 @@ resource "cloudflare_api_token" "readonly" {
 resource "infisical_secret" "cloudflare_api_token" {
   name             = "CLOUDFLARE_API_TOKEN"
   value_wo         = coalesce(cloudflare_api_token.readonly.value, "notset")
+  value_wo_version = 1
+  env_slug         = infisical_project_environment.global.slug
+  workspace_id     = infisical_project.agent.id
+  folder_path      = "/"
+}
+
+resource "infisical_secret" "cloudflare_account" {
+  name         = "CLOUDFLARE_ACCOUNT_ID"
+  value        = local.cf_account_id
+  env_slug     = infisical_project_environment.global.slug
+  workspace_id = infisical_project.agent.id
+  folder_path  = "/"
+}
+
+resource "infisical_secret" "r2_access_key_id" {
+  name         = "R2_ACCESS_KEY_ID"
+  value        = cloudflare_api_token.readonly.id
+  env_slug     = infisical_project_environment.global.slug
+  workspace_id = infisical_project.agent.id
+  folder_path  = "/"
+}
+
+resource "infisical_secret" "r2_secret_access_key" {
+  name             = "R2_SECRET_ACCESS_KEY"
+  value_wo         = sha256(cloudflare_api_token.readonly.value)
   value_wo_version = 1
   env_slug         = infisical_project_environment.global.slug
   workspace_id     = infisical_project.agent.id
