@@ -31,74 +31,82 @@ exact state it always had: init, select the workspace, plan clean.
 The Twilio number's `import` block in `twilio.tf` rides along unused —
 the number was imported into this state long ago.
 
-Only the credential chain leaves for 00_secrets, in two steps.
+Only the credential chain leaves for 00_secrets, in two steps:
 
-1. In 01_app, forget the resources that moved to 00_secrets using
-   `removed` blocks (with `destroy = false` so OpenTofu drops them
-   from state without deleting the real infrastructure). Paste into a
-   temporary `migrate.tf` there, apply to update state, then delete
-   `migrate.tf`:
+### Step 1: Forget moved resources in 01_app
 
-   ```hcl
-   removed {
-     from = google_project_service.services
-     lifecycle {
-       destroy = false
-     }
-   }
+In `tofu/01_app`, forget the resources that moved to `00_secrets` using
+`removed` blocks (with `destroy = false` so OpenTofu drops them from state
+without deleting the real infrastructure). Paste into a temporary
+`migrate.tf` there, apply to update state, then delete `migrate.tf`:
 
-   removed {
-     from = google_service_account.image_pull
-     lifecycle {
-       destroy = false
-     }
-   }
+```hcl
+removed {
+  from = google_project_service.services
+  lifecycle {
+    destroy = false
+  }
+}
 
-   removed {
-     from = google_service_account_key.image_pull
-     lifecycle {
-       destroy = false
-     }
-   }
+removed {
+  from = google_service_account.image_pull
+  lifecycle {
+    destroy = false
+  }
+}
 
-   removed {
-     from = cloudflare_secrets_store_secret.gar_key
-     lifecycle {
-       destroy = false
-     }
-   }
+removed {
+  from = google_service_account_key.image_pull
+  lifecycle {
+    destroy = false
+  }
+}
 
-   removed {
-     from = cloudflare_account_token.registry
-     lifecycle {
-       destroy = false
-     }
-   }
+removed {
+  from = cloudflare_secrets_store_secret.gar_key
+  lifecycle {
+    destroy = false
+  }
+}
 
-   removed {
-     from = restapi_object.gar_registry
-     lifecycle {
-       destroy = false
-     }
-   }
+removed {
+  from = cloudflare_account_token.registry
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = restapi_object.gar_registry
+  lifecycle {
+    destroy = false
+  }
+}
+```
+
+### Step 2: Adopt into 00_secrets
+
+1. First, run `./repair-gar-registry.sh` in `tofu/00_secrets/`:
+   ```bash
+   cd tofu/00_secrets
+   tofu init
+   tofu workspace select veronica # or tofu workspace new veronica
+   ./repair-gar-registry.sh
    ```
+   This pulls state, resolves live records from Cloudflare APIs, and directly
+   populates `cloudflare_secrets_store_secret.gar_key` (by resolving its
+   internal UUID) and `restapi_object.gar_registry` into `00_secrets` state,
+   preventing duplicate creation errors (`secret_name_already_exists`).
 
-2. In 00_secrets:
+2. Then run `tofu apply`:
    - `google_service_account.image_pull` and `google_project_service.services`
-     have static `import` blocks in `registries.tf` (mirroring the pattern
-     `twilio.tf` uses for the Twilio phone number), so they are adopted
-     automatically into state on apply.
-   - For `restapi_object.gar_registry` and `cloudflare_secrets_store_secret.gar_key`,
-     Cloudflare's APIs cannot be imported with standard static names:
-     the Containers registries API has no single-object GET, and the Secrets Store
-     API routes single secret lookups by internal secret UUID rather than secret name.
-     Run `00_secrets/repair-gar-registry.sh` to look up their live records and
-     populate their entries directly into `00_secrets` state.
-   - The pull service account key and scoped account token are minted
-     fresh on apply, avoiding manual key export or token copying.
+     are adopted automatically via static `import` blocks in `registries.tf`.
+   - `cloudflare_account_token.registry` and `google_service_account_key.image_pull`
+     are created / updated.
+   - Run `tofu plan` to confirm the state is completely clean.
 
 One caveat: with versioning enabled on the readable bucket, older
 revisions of its state object still contain the removed secrets until
 they expire — purge old versions if that matters for you.
 
-Fresh deploys skip step 1.
+Fresh deploys skip step 1 and the repair script.
