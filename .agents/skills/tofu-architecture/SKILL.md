@@ -66,6 +66,3 @@ backend "s3" {
 Never the default workspace. Each layer has a workspaces.tf mapping
 workspace name → settings, selected by
 `local.workspace = local.workspaces[tofu.workspace]`.
-
-Exemplars: agent-secrets (sensitive, single layer), veronica (regular
-today; splitting into two layers), ~/code/lightning (numbered layers).
