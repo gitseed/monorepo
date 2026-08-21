@@ -29,6 +29,18 @@ locals {
   registry_hostname = split("/", local.image_repository)[0]
 }
 
+import {
+  for_each = toset([
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "iam.googleapis.com",
+    "logging.googleapis.com",
+    "storage.googleapis.com",
+  ])
+  to = google_project_service.services[each.key]
+  id = "${local.workspace.project_id}/${each.key}"
+}
+
 resource "google_project_service" "services" {
   for_each = toset([
     "artifactregistry.googleapis.com",
@@ -49,6 +61,11 @@ resource "google_project_service" "services" {
 # Cloudflare's identity for pulling the image: the SA email is the public
 # half (01_app grants it reader on the repository by name), and the key
 # below is the private half. It lives in this layer because its key does.
+import {
+  to = google_service_account.image_pull
+  id = "projects/${local.workspace.project_id}/serviceAccounts/voice-pull-${tofu.workspace}@${local.workspace.project_id}.iam.gserviceaccount.com"
+}
+
 resource "google_service_account" "image_pull" {
   account_id   = "voice-pull-${tofu.workspace}"
   display_name = "Veronica driver image pull (Cloudflare)"

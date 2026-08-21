@@ -83,45 +83,20 @@ Only the credential chain leaves for 00_secrets, in two steps.
    }
    ```
 
-2. Adopt them in 00_secrets:
-   - For standard resources, use `import` blocks (paste into a temporary
-     `migrate.tf` in `00_secrets`, fill in IDs, apply, then delete
-     `migrate.tf`):
-
-     ```hcl
-     import {
-       to = google_service_account.image_pull
-       id = "voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com"
-     }
-
-     import {
-       to = google_service_account_key.image_pull
-       id = "projects/untrusted-agent/serviceAccounts/voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com/keys/<key id — gcloud iam service-accounts keys list --iam-account=voice-pull-veronica@untrusted-agent.iam.gserviceaccount.com>"
-     }
-
-     import {
-       to = cloudflare_account_token.registry
-       id = "<token id — Cloudflare dashboard, Account API Tokens>"
-     }
-
-     import {
-       to = cloudflare_secrets_store_secret.gar_key
-       id = "<account id>/<store id>/veronica-gar-pull"
-     }
-     ```
-
+2. In 00_secrets:
+   - `google_service_account.image_pull` and `google_project_service.services`
+     have static `import` blocks directly in `registries.tf` (mirroring the
+     pattern `twilio.tf` uses for the Twilio phone number), so they are
+     adopted automatically on apply.
    - For `restapi_object.gar_registry`, the Cloudflare Containers registries
      API is list-only with no per-object GET endpoint (which breaks `tofu import`).
      Run `00_secrets/repair-gar-registry.sh` to reconstruct its state entry
      directly from the live API record.
-
-Fetch IDs from the consoles or `gcloud` — never `tofu show` before
-step 1 removes them from 01_app's state, which prints the SA key and
-token to the terminal. If a provider rejects an ID format, use whatever
-`tofu import` would take.
+   - The pull service account key, Secrets Store secret, and scoped account
+     token are minted fresh on apply, avoiding manual key export or token copying.
 
 One caveat: with versioning enabled on the readable bucket, older
 revisions of its state object still contain the removed secrets until
 they expire — purge old versions if that matters for you.
 
-Fresh deploys skip everything above.
+Fresh deploys skip step 1.
