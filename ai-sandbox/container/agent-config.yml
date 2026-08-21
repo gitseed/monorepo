@@ -1,7 +1,7 @@
 eval:
   py: false
 modelRoles:
-  default: openrouter/stealth/ox-alpha:high
+  default: openrouter/google/gemini-3.7-flash:high
   smol: openrouter/deepseek/deepseek-v4-flash-0731
 symbolPreset: nerd
 hideThinkingBlock: true
