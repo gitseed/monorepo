@@ -60,16 +60,21 @@ account_id = sys.argv[4]
 with open(backup_file) as f:
     state = json.load(f)
 
+domain = reg["domain"]
+store_id = reg["private_credential"]["store_id"]
+sec_name = reg["private_credential"]["secret_name"]
+pub_cred = reg.get("public_credential") or reg.get("public_key")
+
 # Compact JSON string for restapi_object.gar_registry data
 data_dict = {
     "auth": {
         "private_credential": {
-            "secret_name": reg["private_credential"]["secret_name"],
-            "store_id": reg["private_credential"]["store_id"]
+            "secret_name": sec_name,
+            "store_id": store_id
         },
-        "public_credential": reg.get("public_credential") or reg.get("public_key")
+        "public_credential": pub_cred
     },
-    "domain": reg["domain"],
+    "domain": domain,
     "is_public": False,
     "kind": "GAR"
 }
@@ -94,7 +99,7 @@ resources.append({
         "schema_version": 0,
         "attributes": {
             "account_id": account_id,
-            "comment": f"Created by OpenTofu: credentials for image registry {reg[\"domain\"]}",
+            "comment": "Created by OpenTofu: credentials for image registry " + domain,
             "created": secret.get("created"),
             "dependencies": [
                 "data.cloudflare_secrets_stores.all",
@@ -109,7 +114,7 @@ resources.append({
                 [{"type": "get_attr", "value": "value"}]
             ],
             "status": secret.get("status", "active"),
-            "store_id": secret.get("store_id", reg["private_credential"]["store_id"]),
+            "store_id": secret.get("store_id", store_id),
             "value": None
         }
     }]
@@ -124,7 +129,7 @@ resources.append({
     "instances": [{
         "schema_version": 0,
         "attributes": {
-            "id": reg["domain"],
+            "id": domain,
             "path": "/registries",
             "create_path": "",
             "read_path": "/registries",
@@ -135,7 +140,7 @@ resources.append({
             "update_method": "",
             "destroy_method": "",
             "id_attribute": "domain",
-            "object_id": reg["domain"],
+            "object_id": domain,
             "data": data_str,
             "read_data": "",
             "update_data": "",
@@ -144,17 +149,17 @@ resources.append({
             "read_search": {
                 "results_key": "result",
                 "search_key": "domain",
-                "search_value": reg["domain"]
+                "search_value": domain
             },
             "query_string": "",
             "api_data": {},
             "api_response": "",
             "create_response": "",
             "force_new": [
-                reg["domain"],
-                reg.get("public_credential") or reg.get("public_key"),
-                reg["private_credential"]["store_id"],
-                reg["private_credential"]["secret_name"]
+                domain,
+                pub_cred,
+                store_id,
+                sec_name
             ],
             "ignore_changes_to": [],
             "ignore_all_server_changes": True
