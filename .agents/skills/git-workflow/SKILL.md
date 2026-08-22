@@ -30,12 +30,12 @@ use a worktree.
 - **Merge, don't rebase.** Rebasing rewrites history.
 - **Commit as you go.** One logical unit per commit.
 
-## When done
+## When a PR is ready
 
 1. `git push -u origin <branch>`
-2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test (skip if you worked directly in the current working tree)
-3. `gh pr create --base main --title "<title>" --body "<description>"`
-4. Link the PR URL in your response (e.g. `https://github.com/<owner>/<repo>/pull/<number>`)
+2. `gh pr create --base main --title "<title>" --body "<description>"`
+3. Link the PR URL in your response (e.g. `https://github.com/<owner>/<repo>/pull/<number>`)
+4. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test if needed (skip if you worked directly in the current working tree)
 
 `omp worktree list` shows all agent-managed worktrees; `omp worktree clear`
 reclaims orphaned ones.
