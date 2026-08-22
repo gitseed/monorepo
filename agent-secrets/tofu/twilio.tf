@@ -310,8 +310,28 @@ ephemeral "local_command" "twilio_readonly_key" {
   ]
 }
 
+# Twilio returns 4xx errors as a JSON body on stdout while curl -sS still exits 0,
+# so without this gate the apply dies later with an opaque "no attribute named sid".
+# Non-zero exit here fails the apply with Twilio's actual error body via stderr.
+ephemeral "local_command" "twilio_readonly_key_check" {
+  command = "python3"
+  arguments = ["-c", <<-EOT
+    import json, sys
+    body = sys.stdin.read()
+    try:
+        resp = json.loads(body)
+    except ValueError:
+        sys.exit("Twilio /v1/Keys returned non-JSON response: " + body)
+    if "sid" not in resp or "secret" not in resp:
+        sys.exit("Twilio /v1/Keys error: " + body)
+    sys.stdout.write(body)
+  EOT
+  ]
+  stdin = ephemeral.local_command.twilio_readonly_key.stdout
+}
+
 locals {
-  twilio_key_response = jsondecode(ephemeral.local_command.twilio_readonly_key.stdout)
+  twilio_key_response = jsondecode(ephemeral.local_command.twilio_readonly_key_check.stdout)
 }
 
 resource "infisical_secret" "twilio_api_key" {
