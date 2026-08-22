@@ -30,6 +30,22 @@ s3 =
 EOF
 }
 
+google_adc() {
+    [[ -n ${GOOGLE_SERVICE_ACCOUNT_KEY:-} ]] || return 0
+    local adc_dir="$HOME/.config/gcloud"
+    local adc_file="$adc_dir/application_default_credentials.json"
+    mkdir -p "$adc_dir"
+    chmod 700 "$adc_dir"
+    # google_service_account_key.private_key is base64-encoded JSON
+    if printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" | base64 -d > "$adc_file" 2>/dev/null; then
+        :
+    else
+        printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" > "$adc_file"
+    fi
+    chmod 600 "$adc_file"
+    export GOOGLE_APPLICATION_CREDENTIALS="$adc_file"
+}
+
 aws_config() {
     local default_part cloudflare_part
     default_part=$(aws_default_profile)
@@ -87,6 +103,7 @@ git_config() {
 }
 
 main() {
+    google_adc
     aws_config
     git_config
 }
