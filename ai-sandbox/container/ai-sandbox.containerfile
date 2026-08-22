@@ -80,6 +80,17 @@ RUN curl -fsSL -o /tmp/tofu.tar.gz \
     && chmod 0755 /usr/local/bin/tofu \
     && rm -f /tmp/tofu.tar.gz
 
+# gcloud CLI — same pin as human-sandbox (not in Fedora repos for arm64).
+ARG GCLOUD_VERSION=581.0.0
+ARG GCLOUD_SHA256=22cfc09888525c6daadb8764388ce14e6c26baf80ab07938eacb08c2b4ae64c9
+RUN curl -fsSL -o /tmp/gcloud.tar.gz \
+        "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-${GCLOUD_VERSION}-linux-arm.tar.gz" \
+    && echo "${GCLOUD_SHA256}  /tmp/gcloud.tar.gz" | sha256sum --check \
+    && mkdir -p /usr/local/lib \
+    && tar -xzf /tmp/gcloud.tar.gz -C /usr/local/lib \
+    && rm -f /tmp/gcloud.tar.gz
+ENV PATH=/usr/local/lib/google-cloud-sdk/bin:$PATH
+
 ENV TF_DATA_DIR=.sandbox_tofu
 
 RUN --mount=type=secret,id=ca_cert,target=/ca.pem \

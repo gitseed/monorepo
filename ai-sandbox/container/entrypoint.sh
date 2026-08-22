@@ -30,6 +30,33 @@ s3 =
 EOF
 }
 
+google_adc() {
+    [[ -n ${GOOGLE_SERVICE_ACCOUNT_KEY:-} ]] || return 0
+    local adc_dir="$HOME/.config/gcloud"
+    local adc_file="$adc_dir/application_default_credentials.json"
+    mkdir -p "$adc_dir"
+    chmod 700 "$adc_dir"
+    # google_service_account_key.private_key is base64-encoded JSON
+    if printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" | base64 -d > "$adc_file" 2>/dev/null; then
+        :
+    else
+        printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" > "$adc_file"
+    fi
+    chmod 600 "$adc_file"
+    export GOOGLE_APPLICATION_CREDENTIALS="$adc_file"
+
+    # gcloud auth list reads credentials.db, not ADC. Activate the SA so
+    # `gcloud auth list` and `gcloud config get project` work.
+    if command -v gcloud >/dev/null 2>&1; then
+        gcloud auth activate-service-account --key-file="$adc_file" --quiet 2>/dev/null || true
+        local project_id
+        project_id=$(jq -r '.project_id // empty' "$adc_file" 2>/dev/null || true)
+        if [[ -n $project_id ]]; then
+            gcloud config set project "$project_id" --quiet 2>/dev/null || true
+        fi
+    fi
+}
+
 aws_config() {
     local default_part cloudflare_part
     default_part=$(aws_default_profile)
@@ -87,6 +114,7 @@ git_config() {
 }
 
 main() {
+    google_adc
     aws_config
     git_config
 }
