@@ -5,7 +5,6 @@ locals {
     allow = [
       "/twilio/phone-numbers/active-numbers/read",
       "/twilio/phone-numbers/incoming-phone-numbers/read",
-      "/twilio/phone-numbers/incoming-phone-numbers/update",
       "/twilio/billing/usage/read",
     ]
   }
