@@ -28,6 +28,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "6.56.0"
     }
+    google = {
+      source  = "hashicorp/google"
+      version = "7.39.0"
+    }
   }
   backend "s3" {
     profile                     = "cloudflare"
@@ -71,6 +75,11 @@ provider "infisical" {
 
 provider "aws" {
   region = "us-east-2"
+}
+
+provider "google" {
+  project = local.workspace.google_project_id
+  region  = local.workspace.google_region
 }
 
 provider "openrouter" {
