@@ -44,6 +44,17 @@ google_adc() {
     fi
     chmod 600 "$adc_file"
     export GOOGLE_APPLICATION_CREDENTIALS="$adc_file"
+
+    # gcloud auth list reads credentials.db, not ADC. Activate the SA so
+    # `gcloud auth list` and `gcloud config get project` work.
+    if command -v gcloud >/dev/null 2>&1; then
+        gcloud auth activate-service-account --key-file="$adc_file" --quiet 2>/dev/null || true
+        local project_id
+        project_id=$(jq -r '.project_id // empty' "$adc_file" 2>/dev/null || true)
+        if [[ -n $project_id ]]; then
+            gcloud config set project "$project_id" --quiet 2>/dev/null || true
+        fi
+    fi
 }
 
 aws_config() {
