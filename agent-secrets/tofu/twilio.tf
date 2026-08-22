@@ -9,7 +9,7 @@ ephemeral "local_command" "twilio_readonly_key" {
     "--data-urlencode", "FriendlyName=monorepo-agent-readonly",
     "--data-urlencode", "AccountSid=${nonsensitive(data.infisical_secrets.ouroboros.secrets.TWILIO_API_KEY.value)}",
     "--data-urlencode", "KeyType=restricted",
-    "--data-urlencode", "Policy={\"allow\":[\"/twilio/phone-numbers/active-numbers/read\",\"/twilio/billing/usage/read\"]}",
+    "--data-urlencode", "Policy={\"allow\":[\"/twilio/phone-numbers/active-numbers/read\",\"/twilio/phone-numbers/incoming-phone-numbers/read\",\"/twilio/phone-numbers/incoming-phone-numbers/update\",\"/twilio/billing/usage/read\"]}",
     "-u", "${data.infisical_secrets.ouroboros.secrets.TWILIO_API_KEY.value}:${data.infisical_secrets.ouroboros.secrets.TWILIO_API_SECRET.value}",
   ]
 }
@@ -21,7 +21,7 @@ locals {
 resource "infisical_secret" "twilio_api_key" {
   name             = "TWILIO_API_KEY"
   value_wo         = local.twilio_key_response.sid
-  value_wo_version = 1
+  value_wo_version = 2
   env_slug         = infisical_project_environment.global.slug
   workspace_id     = infisical_project.agent.id
   folder_path      = "/"
@@ -30,7 +30,7 @@ resource "infisical_secret" "twilio_api_key" {
 resource "infisical_secret" "twilio_api_secret" {
   name             = "TWILIO_API_SECRET"
   value_wo         = local.twilio_key_response.secret
-  value_wo_version = 1
+  value_wo_version = 2
   env_slug         = infisical_project_environment.global.slug
   workspace_id     = infisical_project.agent.id
   folder_path      = "/"
