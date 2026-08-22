@@ -1,5 +1,16 @@
 # Twilio IAM API requires application/x-www-form-urlencoded POST data.
 # When Policy is invalid or permissions do not exist, Twilio returns 400 with a detailed JSON error body.
+locals {
+  twilio_readonly_policy = {
+    allow = [
+      "/twilio/phone-numbers/active-numbers/read",
+      "/twilio/phone-numbers/incoming-phone-numbers/read",
+      "/twilio/phone-numbers/incoming-phone-numbers/update",
+      "/twilio/billing/usage/read",
+    ]
+  }
+}
+
 ephemeral "local_command" "twilio_readonly_key" {
   command = "curl"
   arguments = [
@@ -9,7 +20,7 @@ ephemeral "local_command" "twilio_readonly_key" {
     "--data-urlencode", "FriendlyName=monorepo-agent-readonly",
     "--data-urlencode", "AccountSid=${nonsensitive(data.infisical_secrets.ouroboros.secrets.TWILIO_API_KEY.value)}",
     "--data-urlencode", "KeyType=restricted",
-    "--data-urlencode", "Policy=${jsonencode({allow = ["/twilio/phone-numbers/active-numbers/read", "/twilio/phone-numbers/incoming-phone-numbers/read", "/twilio/phone-numbers/incoming-phone-numbers/update", "/twilio/billing/usage/read"]})}",
+    "--data-urlencode", "Policy=${jsonencode(local.twilio_readonly_policy)}",
     "-u", "${data.infisical_secrets.ouroboros.secrets.TWILIO_API_KEY.value}:${data.infisical_secrets.ouroboros.secrets.TWILIO_API_SECRET.value}",
   ]
 }
