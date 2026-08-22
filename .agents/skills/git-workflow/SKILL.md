@@ -30,7 +30,7 @@ use a worktree.
 - **Merge, don't rebase.** Rebasing rewrites history.
 - **Commit as you go.** One logical unit per commit.
 
-## When done
+## When a PR is ready
 
 1. `git push -u origin <branch>`
 2. `git worktree remove ~/.omp/wt/<branch>` — then checkout locally to test (skip if you worked directly in the current working tree)
